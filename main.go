@@ -9,7 +9,7 @@ import (
 	"syscall"
 )
 
-var version = "2.2.0-tw"
+var version = "2.3.0-tw"
 
 // Verbose controls debug logging throughout the app
 var Verbose bool
@@ -21,6 +21,7 @@ func main() {
 	var layoutName, controllerName string
 	shot := ScreenshotOptions{CursorRow: -1, CursorCol: -1}
 	daemon := false
+	settingsMode := false
 	setupMode := false
 	installMode := false
 
@@ -40,6 +41,8 @@ func main() {
 			os.Exit(0)
 		case "--setup":
 			setupMode = true
+		case "--settings":
+			settingsMode = true
 		case "--install":
 			installMode = true
 		case "--daemon":
@@ -134,6 +137,15 @@ func main() {
 			os.Exit(1)
 		}
 		config.Gamepad.Controller = controllerName
+	}
+
+	// --settings: settings window (runs next to the keyboard daemon)
+	if settingsMode {
+		if err := RunSettings(config); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
 	// --screenshot: render once off-screen and exit (README/blog images)
@@ -234,8 +246,9 @@ OPTIONS
   --device, -d PATH    Input device (overrides config, overrides auto-detect)
   --theme, -t NAME     Color theme (overrides config)
   --config, -c PATH    Config file path (overrides search order)
+  --settings           Open the settings window (controller, mouse or keyboard)
   --layout NAME        Key layout: auto, us (QWERTY), de (QWERTZ)
-  --controller NAME    Button names: auto, xbox, playstation, nintendo, generic
+  --controller NAME    Button names: auto, xbox, playstation, nintendo, 8bitdo, generic
   --screenshot FILE    Render the keyboard into a BMP file and exit
                        (with --cursor ROW,COL and --shift for the picture)
   --toggle             Toggle visibility of running instance (for evsieve/hotkey)

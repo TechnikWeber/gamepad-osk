@@ -64,7 +64,7 @@ func (r *Renderer) legendChipColors(c LegendChip) (Color, Color) {
 // drawLegend draws the wrapped legend lines, centred, starting at y.
 func (r *Renderer) drawLegend(y int32) {
 	m := r.legendM
-	sw, _ := SDL3GetRenderOutputSize(r.renderer)
+	sw := r.outW()
 	chipW := func(s string) int32 { w, _ := TTF3GetStringSize(r.fontChip, s); return w }
 	textW := func(s string) int32 { w, _ := TTF3GetStringSize(r.fontSmall, s); return w }
 

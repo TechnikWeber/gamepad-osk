@@ -60,8 +60,21 @@ func BuildLegend(cfg Config, p ControllerProfile, lang string, daemon bool) []Le
 	}
 	g := cfg.Gamepad
 	b := g.Buttons
+	// With swap_ab the "a" function sits on the physical B position
+	physical := func(button string) string {
+		if g.SwapAB {
+			switch button {
+			case "a":
+				return "b"
+			case "b":
+				return "a"
+			}
+		}
+		return button
+	}
 	chip := func(button string) LegendChip {
-		return LegendChip{Label: p.Label(button), Color: p.Colors[button]}
+		pos := physical(button)
+		return LegendChip{Label: p.Label(pos), Color: p.Colors[pos]}
 	}
 	var items []LegendItem
 	add := func(button, textKey string) {
@@ -98,7 +111,9 @@ func BuildLegend(cfg Config, p ControllerProfile, lang string, daemon bool) []Le
 	if combo := strings.TrimSpace(g.ToggleCombo); combo != "" {
 		var chips []LegendChip
 		for _, part := range strings.Split(combo, "+") {
-			chips = append(chips, chip(strings.TrimSpace(strings.ToLower(part))))
+			// Combos are positional (not affected by swap_ab)
+			pos := strings.TrimSpace(strings.ToLower(part))
+			chips = append(chips, LegendChip{Label: p.Label(pos), Color: p.Colors[pos]})
 		}
 		items = append(items, LegendItem{Chips: chips, Text: tx["toggle"]})
 	}

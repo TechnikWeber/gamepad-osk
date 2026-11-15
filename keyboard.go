@@ -30,7 +30,8 @@ type KeyboardState struct {
 	FlashCode  int
 	FlashUntil time.Time
 
-	// Callbacks for Cfg key
+	// Callbacks for Cfg key (fork: plain press opens settings if set)
+	OnOpenSettings      func()
 	OnThemeCycle        func()
 	OnThemeCycleReverse func()
 
@@ -162,6 +163,8 @@ func (kb *KeyboardState) PressCurrent(inj *Injector) {
 			if kb.ShiftActive {
 				kb.ShiftActive = false
 			}
+		} else if kb.OnOpenSettings != nil {
+			kb.OnOpenSettings()
 		} else if kb.OnThemeCycle != nil {
 			kb.OnThemeCycle()
 		}

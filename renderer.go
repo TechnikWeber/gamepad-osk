@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"sync"
 	"strings"
 	"time"
 	"unsafe"
@@ -39,6 +40,20 @@ type Renderer struct {
 
 	legend  [][]LegendItem // wrapped legend lines (nil = no legend)
 	legendM legendMetrics
+
+	// Embedded: draw into a viewport of another window (settings preview):
+	// no clear/present, background as rounded panel of EmbedW x EmbedH.
+	Embedded       bool
+	EmbedW, EmbedH int32
+}
+
+// outW is the drawing width used for centring.
+func (r *Renderer) outW() int32 {
+	if r.Embedded {
+		return r.EmbedW
+	}
+	w, _ := SDL3GetRenderOutputSize(r.renderer)
+	return w
 }
 
 // FontSet holds all fonts plus the fallback fonts they reference.
@@ -52,13 +67,42 @@ type FontSet struct {
 // UI fonts lack (arrows, erase, PlayStation shapes, d-pad, euro, micro).
 var fallbackCodepoints = []string{"2190", "232b", "2715", "25cb", "25a1", "25b3", "271a", "2212", "20ac", "00b5", "00b2", "27f9", "27fe"}
 
+var (
+	fallbackOnce  sync.Once
+	fallbackFiles []string
+)
+
+// fallbackFontFiles returns fonts that cover fallbackCodepoints, deduplicated,
+// in the order fontconfig suggests them. Looked up once per process.
+func fallbackFontFiles(mainFont string) []string {
+	fallbackOnce.Do(func() {
+		seen := map[string]bool{mainFont: true}
+		for _, cp := range fallbackCodepoints {
+			if p := fcMatch("sans-serif:charset=" + cp); p != "" && !seen[p] {
+				seen[p] = true
+				fallbackFiles = append(fallbackFiles, p)
+			}
+		}
+		if p := findFontFile("DejaVuSans.ttf", "NotoSansSymbols2-Regular.ttf"); p != "" && !seen[p] {
+			fallbackFiles = append(fallbackFiles, p)
+		}
+	})
+	return fallbackFiles
+}
+
+var (
+	uiFontOnce sync.Once
+	uiFontPath string
+)
+
 // LoadFonts opens the UI font at sizes derived from the key unit and wires
 // up fallback fonts for symbols. fontSize > 0 overrides the label size.
 func LoadFonts(unit int32, fontSize int) (*FontSet, error) {
 	if err := TTF3Init(); err != nil {
 		return nil, err
 	}
-	fontPath := findUIFont()
+	uiFontOnce.Do(func() { uiFontPath = findUIFont() })
+	fontPath := uiFontPath
 	if fontPath == "" {
 		return nil, errors.New("no suitable font found (install e.g. DejaVu Sans or Noto Sans)")
 	}
@@ -90,19 +134,7 @@ func LoadFonts(unit int32, fontSize int) (*FontSet, error) {
 	}
 	TTF3SetBold(fs.Chip)
 
-	// Fallback fonts, deduplicated, in the order fontconfig suggests them
-	seen := map[string]bool{fontPath: true}
-	var fallbacks []string
-	for _, cp := range fallbackCodepoints {
-		if p := fcMatch("sans-serif:charset=" + cp); p != "" && !seen[p] {
-			seen[p] = true
-			fallbacks = append(fallbacks, p)
-		}
-	}
-	if p := findFontFile("DejaVuSans.ttf", "NotoSansSymbols2-Regular.ttf"); p != "" && !seen[p] {
-		fallbacks = append(fallbacks, p)
-	}
-	for _, p := range fallbacks {
+	for _, p := range fallbackFontFiles(fontPath) {
 		for _, pair := range []struct {
 			f  *Font
 			pt int32
@@ -181,8 +213,12 @@ func (r *Renderer) Draw(kb *KeyboardState) {
 	r.dirtyFrames--
 
 	t := r.theme
-	setColor(r.renderer, t.Bg)
-	SDL3RenderClear(r.renderer)
+	if r.Embedded {
+		r.fillRoundRect(FRect{W: float32(r.EmbedW), H: float32(r.EmbedH)}, float32(r.unit)/4, t.Bg)
+	} else {
+		setColor(r.renderer, t.Bg)
+		SDL3RenderClear(r.renderer)
+	}
 
 	// Draw modifier status bar
 	r.drawModifierBar(kb)
@@ -209,7 +245,9 @@ func (r *Renderer) Draw(kb *KeyboardState) {
 		r.drawAccentPopup(kb)
 	}
 
-	SDL3RenderPresent(r.renderer)
+	if !r.Embedded {
+		SDL3RenderPresent(r.renderer)
+	}
 }
 
 // MarkDirty signals that the display needs updating.
@@ -250,8 +288,7 @@ func (r *Renderer) drawModifierBar(kb *KeyboardState) {
 
 	// Status flash (right-aligned, 2 seconds)
 	if (r.flashText != "" || r.flashGlyphText != "") && time.Now().Before(r.flashEnd) {
-		sw, _ := SDL3GetRenderOutputSize(r.renderer)
-		rightEdge := float32(sw - r.pad)
+		rightEdge := float32(r.outW() - r.pad)
 
 		// Render text part (right-aligned)
 		if r.flashText != "" {

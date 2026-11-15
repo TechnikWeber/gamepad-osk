@@ -71,7 +71,8 @@ type GamepadConfig struct {
 	MouseStick    string // "left" or "right" (nav uses the other stick)
 	ToggleCombo   string // e.g. "select+start", empty = disabled
 	ComboPeriodMs int    // timing window for combo detection (default 200)
-	Controller    string // auto, xbox, playstation, nintendo, generic (button labels)
+	Controller    string // auto, xbox, playstation, nintendo, 8bitdo, generic (button labels)
+	SwapAB        bool   // swap the functions of A and B (bottom and right face button)
 	Buttons       ButtonsConfig
 }
 
@@ -245,6 +246,8 @@ func parseINI(r io.Reader, cfg *Config) error {
 				}
 			case "controller":
 				cfg.Gamepad.Controller = strings.ToLower(val)
+			case "swap_ab":
+				cfg.Gamepad.SwapAB = parseBool("swap_ab", val, false)
 			default:
 				Debugf("unknown config key: gamepad.%s", key)
 			}
@@ -327,7 +330,8 @@ func writeINI(w io.Writer, cfg Config) error {
 	b.WriteString(line(kvf("grab", cfg.Gamepad.Grab), "grab device when visible (prevents input bleed to game)"))
 b.WriteString(line(kv("deadzone", strconv.FormatFloat(cfg.Gamepad.Deadzone, 'f', -1, 64)), "stick deadzone (0.0-1.0)"))
 	b.WriteString(line(kvf("long_press_ms", cfg.Gamepad.LongPressMs), "ms to hold for accent popup (100-5000)"))
-	b.WriteString(line(kv("controller", cfg.Gamepad.Controller), "auto, xbox, playstation, nintendo (also 8BitDo) or generic - button names in the legend"))
+	b.WriteString(line(kv("controller", cfg.Gamepad.Controller), "auto, xbox, playstation, nintendo, 8bitdo or generic - button names in the legend"))
+	b.WriteString(line(kvf("swap_ab", cfg.Gamepad.SwapAB), "true = A and B trade places (bottom/right face button)"))
 	b.WriteString(line(kv("swap_xy", cfg.Gamepad.SwapXY), "auto = detect xpad/xpadneo/xone drivers (default), true = force swap, false = off"))
 	b.WriteString(line(kv("mouse_stick", cfg.Gamepad.MouseStick), "left or right - nav uses the other stick"))
 	b.WriteString(line(kv("toggle_combo", cfg.Gamepad.ToggleCombo), "built-in show/hide combo (empty = disabled, use --toggle/evsieve)"))

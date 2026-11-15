@@ -304,6 +304,17 @@ func (app *App) Run() error {
 		rend.SetTheme(Themes[name])
 		SaveTheme(name)
 	}
+	kb.OnOpenSettings = func() {
+		if exe, err := os.Executable(); err == nil {
+			if err := launchDetached(exe, "--settings"); err != nil {
+				log.Printf("Warning: cannot open settings: %v", err)
+				return
+			}
+			app.lock.Lock()
+			app.togglePending = true // hide the keyboard, settings take the controller
+			app.lock.Unlock()
+		}
+	}
 	kb.OnThemeCycleReverse = func() {
 		app.themeIdx = (app.themeIdx - 1 + len(themeOrder)) % len(themeOrder)
 		name := themeOrder[app.themeIdx]

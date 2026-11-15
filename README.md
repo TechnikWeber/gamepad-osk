@@ -11,7 +11,7 @@
 <p>
   <a href="#install"><b>Install</b></a> &nbsp;·&nbsp;
   <a href="#controls"><b>Controls</b></a> &nbsp;·&nbsp;
-  <a href="#settings"><b>Settings</b></a> &nbsp;·&nbsp;
+  <a href="#settings-window"><b>Settings</b></a> &nbsp;·&nbsp;
   <a href="https://technikweber.github.io/2026/gamepad-osk-mit-dem-controller-tippen/"><b>Blog post (German)</b></a> &nbsp;·&nbsp;
   <a href="https://github.com/0x90shell/gamepad-osk"><b>Original project</b></a>
 </p>
@@ -29,14 +29,17 @@ a button legend, controller profiles, a German layout and a one-line install.
 
 ## What is new in this fork
 
+* **Settings window** with live preview: theme, layout, controller, A/B swap,
+  show/hide combo, mouse, size and *start at login* with one click. Works
+  with the controller, the mouse or the keyboard.
 * **Light theme by default.** Rounded white keys, soft shadow, blue focus,
   like a phone keyboard. `night` is the same in dark. All 60 original themes
   stay, the original look is `theme = matrix`.
 * **Button legend** under the keys: *A Type · X Delete · RT Enter …*, in the
   names printed on *your* controller. German or English, from the locale.
 * **Controller profiles:** Xbox, PlayStation (✕ ○ □ △, L1/R2 …), Nintendo
-  (B at the bottom, ZL/ZR, − +) and generic. Detected from driver, vendor
-  and name; one line in the config switches it.
+  (B at the bottom, ZL/ZR, − +), 8BitDo and generic. Detected from driver,
+  vendor and name. **Swap A and B** for pads where it feels the wrong way round.
 * **8BitDo and other DInput pads over Bluetooth** work: right stick, and
   holding LT for capitals (digital triggers). Upstream read the right stick
   as triggers on these pads.
@@ -61,7 +64,8 @@ The script
 * puts the binary into `~/.local/bin` (x86_64),
 * installs SDL3 and SDL3_ttf with your package manager if they are missing (asks first),
 * adds a udev rule only if your system gives no access to `/dev/uinput` (asks first),
-* starts gamepad-osk hidden at every login (systemd user service).
+* starts gamepad-osk hidden at every login (systemd user service),
+* adds **gamepad-osk Settings** to the start menu (right click: show/hide keyboard).
 
 Then press **Guide + Select** on the controller (Xbox button + View,
 PS button + Create, Home + −). Remove it with `install.sh --uninstall`.
@@ -105,7 +109,17 @@ no grab. Games keep the controller to themselves (e.g. Minecraft with
 Controlify). While it is visible it grabs the controller so input does not
 reach the game.
 
-## Settings
+## Settings window
+
+Start menu → **gamepad-osk Settings**, `gamepad-osk --settings`, or the
+**Settings** key on the keyboard itself (Shift + Settings cycles themes).
+
+<img src="docs/settings.png" width="640" alt="Settings window: keyboard preview on top, below two columns with Start at login, Theme, Keyboard layout, Button names, Swap A and B, Show/hide with, Mouse, Mouse speed, Show button legend, Position and Size, buttons Close and Save">
+
+D-pad up/down selects, left/right changes, A toggles, Start saves, B closes.
+Saving restarts the running keyboard so changes apply at once.
+
+## Settings file
 
 `~/.config/gamepad-osk/config`, created on the first start. The new keys:
 
@@ -120,7 +134,8 @@ legend = true         # button legend under the keys
 layout = auto         # auto, us (QWERTY), de (QWERTZ)
 
 [gamepad]
-controller = auto     # auto, xbox, playstation, nintendo, generic
+controller = auto     # auto, xbox, playstation, nintendo, 8bitdo, generic
+swap_ab = false       # true: A and B trade places
 toggle_combo = guide+select
 mouse_stick = right   # left or right
 ```

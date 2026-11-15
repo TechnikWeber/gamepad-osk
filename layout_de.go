@@ -98,7 +98,7 @@ var LayoutQWERTZ = [][]KeyDef{
 		k("Leertaste", KEY_SPACE, 5.0),
 		mod("AltGr", KEY_RIGHTALT, 1.25, "altgr"),
 		k("←", KEY_LEFT, 0.75), k("→", KEY_RIGHT, 0.75), k("↑", KEY_UP, 0.75, "⟹"), k("↓", KEY_DOWN, 0.75, "⟾"),
-		action(k("Design", 0, 1.75), "cfg"),
+		action(k("Einstell.", 0, 1.75, "Design"), "cfg"),
 	},
 }
 

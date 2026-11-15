@@ -20,6 +20,9 @@ SVC_DIR="$CFG_HOME/systemd/user"
 SVC="$SVC_DIR/gamepad-osk.service"
 AUTOSTART="$CFG_HOME/autostart/gamepad-osk.desktop"
 UDEV_RULE="/etc/udev/rules.d/70-gamepad-osk.rules"
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+ICON="$DATA_HOME/icons/hicolor/scalable/apps/gamepad-osk.svg"
+MENU="$DATA_HOME/applications/gamepad-osk-settings.desktop"
 
 say()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
@@ -45,7 +48,7 @@ uninstall() {
     if has_systemd_user; then
         systemctl --user disable --now gamepad-osk.service 2>/dev/null || true
     fi
-    rm -f "$SVC" "$AUTOSTART" "$BIN"
+    rm -f "$SVC" "$AUTOSTART" "$BIN" "$ICON" "$MENU"
     has_systemd_user && systemctl --user daemon-reload || true
     if [ -f "$UDEV_RULE" ]; then
         say "Removing udev rule (needs sudo)"
@@ -162,12 +165,56 @@ DESK
     nohup "$BIN" --daemon >/dev/null 2>&1 &
 fi
 
+# --- 6. Start menu entry: settings window, right click toggles the keyboard ---
+mkdir -p "$(dirname "$ICON")" "$(dirname "$MENU")"
+cat >"$ICON" <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- gamepad-osk icon: a light keyboard tray with a controller in front -->
+  <rect x="8" y="14" width="112" height="70" rx="16" fill="#d1d4db"/>
+  <g fill="#ffffff">
+    <rect x="18" y="24" width="16" height="14" rx="4"/><rect x="38" y="24" width="16" height="14" rx="4"/>
+    <rect x="58" y="24" width="16" height="14" rx="4"/><rect x="78" y="24" width="16" height="14" rx="4"/>
+    <rect x="98" y="24" width="12" height="14" rx="4"/>
+    <rect x="18" y="42" width="16" height="14" rx="4"/><rect x="38" y="42" width="16" height="14" rx="4"/>
+    <rect x="78" y="42" width="16" height="14" rx="4"/><rect x="98" y="42" width="12" height="14" rx="4"/>
+    <rect x="34" y="60" width="60" height="14" rx="4"/>
+  </g>
+  <rect x="58" y="42" width="16" height="14" rx="4" fill="#0a84ff"/>
+  <path d="M30 86c0-8 7-14 15-14h38c8 0 15 6 15 14l6 20c2 8-4 14-11 12l-12-6H47l-12 6c-7 2-13-4-11-12z" fill="#2c2c30"/>
+  <rect x="38" y="88" width="14" height="4" rx="2" fill="#fff"/><rect x="43" y="83" width="4" height="14" rx="2" fill="#fff"/>
+  <circle cx="86" cy="85" r="3.5" fill="#e8aa00"/><circle cx="93" cy="91" r="3.5" fill="#d62828"/>
+  <circle cx="79" cy="91" r="3.5" fill="#006edc"/><circle cx="86" cy="97" r="3.5" fill="#108c40"/>
+</svg>
+SVG
+cat >"$MENU" <<DESK
+[Desktop Entry]
+Type=Application
+Name=gamepad-osk Settings
+Name[de]=gamepad-osk Einstellungen
+Comment=On-screen keyboard for game controllers: theme, layout, controller, autostart
+Comment[de]=Bildschirmtastatur für Controller: Design, Layout, Controller, Autostart
+Exec=$BIN --settings
+Icon=gamepad-osk
+Categories=Settings;Utility;
+Keywords=keyboard;controller;gamepad;osk;Tastatur;
+StartupWMClass=gamepad-osk-settings
+Actions=toggle;
+
+[Desktop Action toggle]
+Name=Show/hide keyboard
+Name[de]=Tastatur ein-/ausblenden
+Exec=$BIN --toggle
+DESK
+command -v update-desktop-database >/dev/null && update-desktop-database -q "$DATA_HOME/applications" 2>/dev/null || true
+say "Start menu entry added: gamepad-osk Settings"
+
 case ":$PATH:" in *":$BIN_DIR:"*) ;; *) warn "$BIN_DIR is not in your PATH (only matters for typing gamepad-osk by hand)." ;; esac
 
 cat <<EOF
 
   Done. Show/hide the keyboard with  Guide + Select  on your controller
   (Xbox button + View, PS button + Create, Home + Minus).
-  Settings: $CFG_HOME/gamepad-osk/config   Uninstall: install.sh --uninstall
+  Settings: start menu "gamepad-osk Settings" (or: gamepad-osk --settings)
+  Uninstall: install.sh --uninstall
 
 EOF

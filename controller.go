@@ -27,6 +27,7 @@ const (
 	ProfileXbox        = "xbox"
 	ProfilePlayStation = "playstation"
 	ProfileNintendo    = "nintendo"
+	Profile8BitDo      = "8bitdo"
 	ProfileGeneric     = "generic"
 )
 
@@ -55,10 +56,19 @@ var ControllerProfiles = map[string]ControllerProfile{
 		},
 		Shapes: true,
 	},
+	Profile8BitDo: {
+		// 8BitDo Ultimate family: Xbox positions (A bottom, B right),
+		// Nintendo-style − + and Home. Retro pads with Nintendo print: swap_ab.
+		ID: Profile8BitDo, Name: "8BitDo",
+		Labels: map[string]string{
+			"a": "A", "b": "B", "x": "X", "y": "Y",
+			"lb": "LB", "rb": "RB", "lt": "LT", "rt": "RT",
+			"l3": "LS", "r3": "RS", "select": "−", "start": "+", "guide": "Home",
+		},
+	},
 	ProfileNintendo: {
-		// Nintendo prints B at the bottom and A on the right. Many 8BitDo pads
-		// use the same print, also when they talk DInput over Bluetooth.
-		ID: ProfileNintendo, Name: "Nintendo / 8BitDo",
+		// Nintendo prints B at the bottom and A on the right.
+		ID: ProfileNintendo, Name: "Nintendo",
 		Labels: map[string]string{
 			"a": "B", "b": "A", "x": "Y", "y": "X",
 			"lb": "L", "rb": "R", "lt": "ZL", "rt": "ZR",
@@ -149,8 +159,8 @@ func detectProfile(info deviceInfo, dinput bool) string {
 		return ProfilePlayStation
 	case "057e": // Nintendo
 		return ProfileNintendo
-	case "2dc8": // 8BitDo: Nintendo print unless it runs as an Xbox pad (xpad, above)
-		return ProfileNintendo
+	case "2dc8": // 8BitDo (as Xbox pad via xpad it is caught above)
+		return Profile8BitDo
 	}
 	switch {
 	case strings.Contains(name, "xbox") || strings.Contains(name, "x-box"):
@@ -159,8 +169,10 @@ func detectProfile(info deviceInfo, dinput bool) string {
 		strings.Contains(name, "playstation"):
 		return ProfilePlayStation
 	case strings.Contains(name, "pro controller") || strings.Contains(name, "joy-con") ||
-		strings.Contains(name, "nintendo") || strings.Contains(name, "8bitdo"):
+		strings.Contains(name, "nintendo"):
 		return ProfileNintendo
+	case strings.Contains(name, "8bitdo"):
+		return Profile8BitDo
 	}
 	if dinput {
 		return ProfileGeneric

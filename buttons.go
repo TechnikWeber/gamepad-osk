@@ -29,6 +29,16 @@ func isSwapXY(cfg GamepadConfig) bool {
 	return cfg.SwapXY == "true"
 }
 
+// buttonTableFor returns the button table for a gamepad config, with the
+// driver quirk (swap_xy) and the user's A/B preference (swap_ab) applied.
+func buttonTableFor(cfg GamepadConfig) map[string]ButtonInfo {
+	t := buttonTable(isSwapXY(cfg))
+	if cfg.SwapAB {
+		t["a"], t["b"] = t["b"], t["a"]
+	}
+	return t
+}
+
 func buttonTable(swapXY bool) map[string]ButtonInfo {
 	xBtn := uint16(BTN_WEST)
 	yBtn := uint16(BTN_NORTH)
@@ -60,7 +70,7 @@ type ActionMap struct {
 }
 
 func BuildActionMap(cfg GamepadConfig) ActionMap {
-	table := buttonTable(isSwapXY(cfg))
+	table := buttonTableFor(cfg)
 	press := make(map[uint16]ActionType)
 	release := make(map[uint16]ActionType)
 	axes := make(map[uint16]ActionType)
@@ -144,7 +154,7 @@ func BuildActionMap(cfg GamepadConfig) ActionMap {
 // BuildKeyGlyphs maps keyboard evdev codes to Promptfont glyphs
 // based on which controller button triggers that action.
 func BuildKeyGlyphs(cfg GamepadConfig) map[int]string {
-	table := buttonTable(isSwapXY(cfg))
+	table := buttonTableFor(cfg)
 	b := cfg.Buttons
 	glyphs := make(map[int]string)
 

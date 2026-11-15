@@ -243,7 +243,7 @@ func (gp *GamepadReader) Profile() ControllerProfile {
 // Called after device open so swap_xy auto-detect can take effect.
 func (gp *GamepadReader) initButtonMap() {
 	gp.actionMap = BuildActionMap(gp.config.Gamepad)
-	table := buttonTable(isSwapXY(gp.config.Gamepad))
+	table := buttonTableFor(gp.config.Gamepad)
 
 	gp.pressBtn = BTN_SOUTH
 	if info, ok := table[gp.config.Gamepad.Buttons.Press]; ok && !info.IsAxis {
