@@ -51,7 +51,7 @@ a button legend, controller profiles, a German layout and a one-line install.
 * **One-line install** without root on most desktops, autostart included,
   show/hide combo (Guide + Select) on by default.
 
-<img src="docs/light-de.png" width="640" alt="German layout with umlauts and AltGr symbols, legend in German with the button names of an 8BitDo controller: B Tippen, Y Löschen, X Leerzeichen, ZR Enter, ZL Groß (halten)">
+<img src="docs/light-de.png" width="640" alt="German layout with umlauts and AltGr symbols, legend in German with the button names of an 8BitDo controller: A Tippen, X Löschen, Y Leerzeichen, RT Enter, LT Groß (halten)">
 
 ## Install
 
