@@ -46,6 +46,10 @@ type Renderer struct {
 	Embedded       bool
 	EmbedW, EmbedH int32
 
+	// KeyBadges: controller button shown on keys that have their own
+	// button (Enter, Space, Backspace, Shift, Caps). nil = off.
+	KeyBadges map[int]LegendChip
+
 	// Opacity < 1 draws the frame see-through (Wayland: via an off-screen
 	// layer, because window opacity has no effect on layer surfaces).
 	Opacity        float32
@@ -65,6 +69,7 @@ func (r *Renderer) outW() int32 {
 // FontSet holds all fonts plus the fallback fonts they reference.
 type FontSet struct {
 	Font, Small, Chip, Glyph *Font
+	Badge                    *Font   // bold, tiny: button badges on keys
 	HasPromptFont            bool    // Glyph is Promptfont (controller icons available)
 	owned                    []*Font // everything to close, fallbacks included
 }
@@ -134,17 +139,20 @@ func LoadFonts(unit int32, fontSize int) (*FontSet, error) {
 	fs.Font = open(fontPath, size)
 	fs.Small = open(fontPath, small)
 	fs.Chip = open(fontPath, small)
-	if fs.Font == nil || fs.Small == nil || fs.Chip == nil {
+	badge := max32(9, small*4/5)
+	fs.Badge = open(fontPath, badge)
+	if fs.Font == nil || fs.Small == nil || fs.Chip == nil || fs.Badge == nil {
 		fs.Close()
 		return nil, errors.New("cannot open font " + fontPath)
 	}
 	TTF3SetBold(fs.Chip)
+	TTF3SetBold(fs.Badge)
 
 	for _, p := range fallbackFontFiles(fontPath) {
 		for _, pair := range []struct {
 			f  *Font
 			pt int32
-		}{{fs.Font, size}, {fs.Small, small}, {fs.Chip, small}} {
+		}{{fs.Font, size}, {fs.Small, small}, {fs.Chip, small}, {fs.Badge, badge}} {
 			if fb := open(p, pair.pt); fb != nil {
 				TTF3AddFallback(pair.f, fb)
 			}
@@ -434,6 +442,12 @@ func (r *Renderer) drawKey(key KeyDef, x, y int32, isCursor bool, kb *KeyboardSt
 	if key.AltGrLabel != "" && !isCursor && !kb.AltGrActive {
 		r.renderText(r.fontSmall, key.AltGrLabel, t.ModifierText,
 			FRect{X: float32(x + 4), Y: float32(y), W: float32(w - 4), H: float32(h - 2)}, AlignBottomLeft)
+	}
+
+	// Button badge (top-left): which controller button triggers this key
+	if chip, ok := r.KeyBadges[key.Code]; ok {
+		r.drawKeyBadge(chip, x, y, isCursor || flashed, bg)
+		return
 	}
 
 	// Controller glyph (bottom-right); only with Promptfont, the legend

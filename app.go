@@ -267,6 +267,7 @@ func (app *App) Run() error {
 	if isWayland {
 		rend.Opacity = float32(cfg.Window.Opacity)
 	}
+	rend.KeyBadges = BuildKeyBadges(gamepad.config, gamepad.Profile())
 
 	inj, err := NewInjector()
 	if err != nil {
@@ -529,6 +530,7 @@ func (app *App) Run() error {
 				if gamepad.Reconnect() {
 					rend.Flash("Controller connected")
 					rend.SetLegend(buildLegend(gamepad.Profile()))
+					rend.KeyBadges = BuildKeyBadges(gamepad.config, gamepad.Profile())
 					if app.visible && cfg.Gamepad.Grab {
 						gamepad.Grab()
 					}
@@ -634,7 +636,9 @@ func (app *App) handleAction(a Action, kb *KeyboardState, inj *Injector, rend *R
 		return
 	}
 
-	rend.MarkDirty()
+	if a.Type != ActionMouseMove { // cursor movement changes nothing on the keyboard
+		rend.MarkDirty()
+	}
 
 	switch a.Type { //nolint:exhaustive // ActionNone is filtered by caller
 

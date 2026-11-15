@@ -130,6 +130,38 @@ func BuildLegend(cfg Config, p ControllerProfile, lang string, daemon bool) []Le
 	return items
 }
 
+// BuildKeyBadges maps keys that have their own controller button to that
+// button's chip (shown in the key's corner): Backspace, Space, Enter, Shift
+// and Caps Lock (click of the navigation stick).
+func BuildKeyBadges(cfg Config, p ControllerProfile) map[int]LegendChip {
+	if !cfg.Window.KeyBadges {
+		return nil
+	}
+	g := cfg.Gamepad
+	chip := func(button string) LegendChip {
+		pos := button
+		if g.SwapAB && (button == "a" || button == "b") {
+			pos = map[string]string{"a": "b", "b": "a"}[button]
+		}
+		return LegendChip{Label: p.Label(pos), Color: p.Colors[pos]}
+	}
+	badges := map[int]LegendChip{}
+	for code, button := range map[int]string{
+		KEY_BACKSPACE: g.Buttons.Backspace, KEY_SPACE: g.Buttons.Space, KEY_ENTER: g.Buttons.Enter,
+		KEY_LEFTSHIFT: g.Buttons.Shift, KEY_RIGHTSHIFT: g.Buttons.Shift,
+	} {
+		if button != "" {
+			badges[code] = chip(button)
+		}
+	}
+	caps := "l3"
+	if g.MouseStick == "left" {
+		caps = "r3"
+	}
+	badges[KEY_CAPSLOCK] = chip(caps)
+	return badges
+}
+
 // BuildMouseLegend lists the buttons of mouse mode for the small badge.
 func BuildMouseLegend(cfg Config, p ControllerProfile, lang string) []LegendItem {
 	tx := legendTexts[lang]

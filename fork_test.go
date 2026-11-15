@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"testing"
+	"time"
 )
 
 // Settings written by the settings window must load back unchanged.
@@ -10,6 +11,7 @@ func TestWriteINIRoundTripForkKeys(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Theme.Name = "night"
 	cfg.Window.Legend = false
+	cfg.Window.KeyBadges = false
 	cfg.Keys.Layout = "de"
 	cfg.Gamepad.Controller = Profile8BitDo
 	cfg.Gamepad.SwapAB = true
@@ -130,8 +132,8 @@ func TestQWERTZUndoRedoUseSwappedCodes(t *testing.T) {
 
 func TestDefaultMouseSpeedAndCombo(t *testing.T) {
 	cfg := DefaultConfig()
-	if cfg.Mouse.Sensitivity != 18 {
-		t.Errorf("default sensitivity = %d, want 18", cfg.Mouse.Sensitivity)
+	if cfg.Mouse.Sensitivity != 20 {
+		t.Errorf("default sensitivity = %d, want 20", cfg.Mouse.Sensitivity)
 	}
 	if cfg.Gamepad.MouseCombo != "guide+start" {
 		t.Errorf("default mouse_combo = %q", cfg.Gamepad.MouseCombo)
@@ -174,8 +176,8 @@ func TestSwitchedOffButtonHasNoAction(t *testing.T) {
 func TestSettingsMappingSwapsDuplicates(t *testing.T) {
 	s := &settingsUI{cfg: DefaultConfig(), tx: settingsTexts["en"]}
 	s.buildRows()
-	// Buttons page: row 0 = swap A/B, row 1 = press, row 2 = backspace (x)
-	press := s.pages[1][1]
+	// Buttons page: row 0 = swap A/B, row 1 = key badges, row 2 = press
+	press := s.pages[1][2]
 	choices := press.options()
 	xIdx := -1
 	for i, l := range choices {
@@ -197,5 +199,36 @@ func TestMouseLegend(t *testing.T) {
 	items := BuildMouseLegend(DefaultConfig(), GetControllerProfile(ProfileXbox), "de")
 	if len(items) != 4 || items[0].Text != "Klick" || items[len(items)-1].Chips[0].Label != "B" {
 		t.Errorf("mouse legend = %+v", items)
+	}
+}
+
+func TestKeyBadges(t *testing.T) {
+	cfg := DefaultConfig()
+	b := BuildKeyBadges(cfg, GetControllerProfile(ProfileXbox))
+	if b[KEY_ENTER].Label != "RT" || b[KEY_BACKSPACE].Label != "X" || b[KEY_SPACE].Label != "Y" {
+		t.Errorf("badges = %+v", b)
+	}
+	cfg.Window.KeyBadges = false
+	if BuildKeyBadges(cfg, GetControllerProfile(ProfileXbox)) != nil {
+		t.Error("key_badges = false must give no badges")
+	}
+}
+
+func TestMouseSpeedIndependentOfPollRate(t *testing.T) {
+	move := func(step time.Duration) int {
+		gp := NewGamepadReader(DefaultConfig())
+		gp.mouseX = 1
+		start := time.Unix(0, 0)
+		total := 0
+		for now := start; now.Sub(start) < time.Second; now = now.Add(step) {
+			if a, ok := gp.mouseStep(now); ok {
+				total += a.DX
+			}
+		}
+		return total
+	}
+	fast, slow := move(4*time.Millisecond), move(20*time.Millisecond)
+	if d := fast - slow; d < -25 || d > 25 {
+		t.Errorf("1 s full stick: %d px at 250 Hz, %d px at 50 Hz - should match", fast, slow)
 	}
 }

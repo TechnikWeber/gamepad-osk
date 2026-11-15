@@ -38,6 +38,7 @@ type WindowConfig struct {
 	Opacity      float64
 	PanelAvoid   bool    // Wayland: respect panel exclusive zones (false = always screen edge)
 	Legend       bool    // show the button legend below the keys
+	KeyBadges    bool    // small controller-button badge on keys with a button (Enter, Space ...)
 }
 
 type KeysConfig struct {
@@ -85,7 +86,7 @@ type MouseConfig struct {
 func DefaultConfig() Config {
 	return Config{
 		Theme:  ThemeConfig{Name: DefaultThemeName},
-		Window: WindowConfig{Position: "bottom", Margin: 0, Opacity: 0.95, PanelAvoid: true, Legend: true},
+		Window: WindowConfig{Position: "bottom", Margin: 0, Opacity: 0.95, PanelAvoid: true, Legend: true, KeyBadges: true},
 		Keys:   KeysConfig{UnitSize: 0, Padding: 6, FontSize: 0, Scale: 50, RepeatDelayMs: 400, RepeatRateMs: 80, Layout: "auto"},
 		Gamepad: GamepadConfig{
 			Grab:          true,
@@ -109,7 +110,7 @@ func DefaultConfig() Config {
 				PositionToggle: "start",
 			},
 		},
-		Mouse: MouseConfig{Enabled: true, Sensitivity: 18},
+		Mouse: MouseConfig{Enabled: true, Sensitivity: 20},
 	}
 }
 
@@ -188,6 +189,8 @@ func parseINI(r io.Reader, cfg *Config) error {
 				cfg.Window.PanelAvoid = parseBool("panel_avoid", val, true)
 			case "legend":
 				cfg.Window.Legend = parseBool("legend", val, true)
+			case "key_badges":
+				cfg.Window.KeyBadges = parseBool("key_badges", val, true)
 			default:
 				Debugf("unknown config key: window.%s", key)
 			}
@@ -317,6 +320,7 @@ func writeINI(w io.Writer, cfg Config) error {
 	b.WriteString(line(kv("opacity", strconv.FormatFloat(cfg.Window.Opacity, 'f', -1, 64)), "0.0-1.0 (1.0 = fully opaque)"))
 	b.WriteString(line(kv("panel_avoid", strconv.FormatBool(cfg.Window.PanelAvoid)), "Wayland: respect panel spacing (false = always screen edge)"))
 	b.WriteString(line(kv("legend", strconv.FormatBool(cfg.Window.Legend)), "show which controller button does what, below the keys"))
+	b.WriteString(line(kv("key_badges", strconv.FormatBool(cfg.Window.KeyBadges)), "small button badge on keys with their own button (Enter, Space ...)"))
 	b.WriteString("\n")
 
 	b.WriteString("[keys]\n")
@@ -737,8 +741,8 @@ func ValidateConfig(cfg *Config) {
 		cfg.Gamepad.Deadzone = 0.25
 	}
 	if cfg.Mouse.Sensitivity < 1 || cfg.Mouse.Sensitivity > 50 {
-		log.Printf("Warning: sensitivity %d out of range [1,50], using 18", cfg.Mouse.Sensitivity)
-		cfg.Mouse.Sensitivity = 18
+		log.Printf("Warning: sensitivity %d out of range [1,50], using 20", cfg.Mouse.Sensitivity)
+		cfg.Mouse.Sensitivity = 20
 	}
 	if cfg.Gamepad.LongPressMs < 100 || cfg.Gamepad.LongPressMs > 5000 {
 		log.Printf("Warning: long_press_ms %d out of range [100,5000], using 500", cfg.Gamepad.LongPressMs)

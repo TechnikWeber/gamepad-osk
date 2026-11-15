@@ -54,7 +54,7 @@ var settingsTexts = map[string]map[string]string{
 		"select": "wählen", "change_v": "ändern", "toggle_v": "umschalten", "page_v": "Seite",
 		"save_v": "speichern", "close_v": "schließen",
 		"page_general": "Allgemein", "page_buttons": "Belegung",
-		"mouse_combo": "Nur Maus mit", "opacity": "Transparenz",
+		"mouse_combo": "Nur Maus mit", "key_badges": "Buttons auf den Tasten", "opacity": "Transparenz",
 		"b_press": "Taste tippen", "b_backspace": "Löschen", "b_space": "Leerzeichen",
 		"b_enter": "Enter", "b_shift": "Großschreiben (halten)", "b_close": "Ausblenden",
 		"b_left_click": "Linksklick", "b_right_click": "Rechtsklick", "b_position": "Oben/Unten wechseln",
@@ -77,7 +77,7 @@ var settingsTexts = map[string]map[string]string{
 		"select": "select", "change_v": "change", "toggle_v": "toggle", "page_v": "page",
 		"save_v": "save", "close_v": "close",
 		"page_general": "General", "page_buttons": "Buttons",
-		"mouse_combo": "Mouse only with", "opacity": "Transparency",
+		"mouse_combo": "Mouse only with", "key_badges": "Buttons on the keys", "opacity": "Transparency",
 		"b_press": "Type key", "b_backspace": "Delete", "b_space": "Space",
 		"b_enter": "Enter", "b_shift": "Shift (hold)", "b_close": "Hide",
 		"b_left_click": "Left click", "b_right_click": "Right click", "b_position": "Top/bottom",
@@ -344,6 +344,8 @@ func (s *settingsUI) buildRows() {
 	buttons := []settingsRow{
 		{label: s.t("swap_ab"), kind: rowToggle,
 			get: func() int { return b2i(s.cfg.Gamepad.SwapAB) }, set: func(v int) { s.cfg.Gamepad.SwapAB = v == 1 }},
+		{label: s.t("key_badges"), kind: rowToggle,
+			get: func() int { return b2i(s.cfg.Window.KeyBadges) }, set: func(v int) { s.cfg.Window.KeyBadges = v == 1 }},
 	}
 	for _, def := range mappingDefs {
 		buttons = append(buttons, s.mappingRow(def))
@@ -579,6 +581,7 @@ func (s *settingsUI) rebuildPreview() {
 		h += LegendHeight(lines, lm, pad)
 	}
 	r := NewRenderer(s.sdl, GetTheme(cfg.Theme.Name), unit, pad, fonts, lines, lm)
+	r.KeyBadges = BuildKeyBadges(cfg, s.effectiveProfile())
 	r.Embedded = true
 	r.EmbedW, r.EmbedH = w, h
 	s.preview = r

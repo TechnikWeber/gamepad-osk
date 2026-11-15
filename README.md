@@ -44,6 +44,9 @@ a button legend, controller profiles, a German layout and a one-line install.
   stay, the original look is `theme = matrix`.
 * **Button legend** under the keys: *A Type · X Delete · RT Enter …*, in the
   names printed on *your* controller. German or English, from the locale.
+* **Button badges on the keys:** Enter, Space, Backspace, Shift and Caps show
+  the controller button that triggers them in a small corner badge
+  (`[window] key_badges`, on by default).
 * **Controller profiles:** Xbox, PlayStation (✕ ○ □ △, L1/R2 …), Nintendo
   (B at the bottom, ZL/ZR, − +), 8BitDo and generic. Detected from driver,
   vendor and name. **Swap A and B** for pads where it feels the wrong way round.
@@ -147,6 +150,7 @@ name = light          # light, night, matrix, nord, ... (Design/Cfg key cycles)
 
 [window]
 legend = true         # button legend under the keys
+key_badges = true     # button badge in the corner of Enter, Space, Shift ...
 opacity = 0.95        # 0.2-1.0, now also on Wayland
 
 [keys]
@@ -163,7 +167,7 @@ mouse_stick = right   # left or right
 position_toggle = start     # any function can be empty = off
 
 [mouse]
-sensitivity = 18      # new default (was 10)
+sensitivity = 20      # new default (was 10); same speed in mouse mode and with the keyboard
 ```
 
 Everything else (button mapping, size, opacity, key repeat …) is described

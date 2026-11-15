@@ -9,6 +9,7 @@ margin = 0                   # pixels from screen edge
 opacity = 0.95               # 0.2-1.0 (1.0 = fully opaque), works on X11 and Wayland
 panel_avoid = true           # Wayland: respect panel spacing (false = always screen edge)
 legend = true                # show which controller button does what, below the keys
+key_badges = true            # small button badge on keys with their own button (Enter, Space ...)
 
 [keys]
 unit_size = 0                # 0 = auto-scale, or fixed pixel size
@@ -50,4 +51,4 @@ position_toggle = start      # toggle keyboard top/bottom (empty = disabled)
 
 [mouse]
 enabled = true               # enable mouse cursor via right stick
-sensitivity = 18             # 1-50, higher = faster cursor (Shift+up/down to adjust live)
+sensitivity = 20             # 1-50, higher = faster cursor (Shift+up/down to adjust live)

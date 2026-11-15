@@ -148,6 +148,11 @@ type GamepadReader struct {
 
 	ForceMouse bool // mouse mode: move the cursor even if [mouse] enabled = false
 
+	// Mouse speed is per 20 ms, independent of how often the main loop
+	// runs (it polls faster in mouse mode than while drawing the keyboard).
+	mouseLast       time.Time
+	mouseAccX, mouseAccY float64
+
 	// Combo state: show/hide keyboard and mouse mode
 	combos        []*comboState
 	comboPeriodMs int              // timing window
@@ -538,12 +543,12 @@ func (gp *GamepadReader) ReadEvents() []Action {
 
 	// Mouse
 	if (gp.config.Mouse.Enabled || gp.ForceMouse) && (math.Abs(gp.mouseX) > 0.01 || math.Abs(gp.mouseY) > 0.01) {
-		s := float64(gp.config.Mouse.Sensitivity)
-		actions = append(actions, Action{
-			Type: ActionMouseMove,
-			DX:   int(gp.mouseX * s),
-			DY:   int(gp.mouseY * s),
-		})
+		if a, ok := gp.mouseStep(time.Now()); ok {
+			actions = append(actions, a)
+		}
+	} else {
+		gp.mouseLast = time.Time{}
+		gp.mouseAccX, gp.mouseAccY = 0, 0
 	}
 
 	return actions
@@ -796,6 +801,32 @@ func (gp *GamepadReader) isComboButtonHeld(cb ComboButton) bool {
 		}
 	}
 	return false
+}
+
+// mouseReferenceStep is the time one sensitivity step of movement refers to.
+const mouseReferenceStep = 20 * time.Millisecond
+
+// mouseStep turns the stick position into cursor movement for the time
+// since the last step, keeping fractions so slow movement stays smooth.
+func (gp *GamepadReader) mouseStep(now time.Time) (Action, bool) {
+	scale := 1.0
+	if !gp.mouseLast.IsZero() {
+		scale = float64(now.Sub(gp.mouseLast)) / float64(mouseReferenceStep)
+		if scale > 3 { // long pause (e.g. window hidden): count as one step
+			scale = 1
+		}
+	}
+	gp.mouseLast = now
+	s := float64(gp.config.Mouse.Sensitivity) * scale
+	gp.mouseAccX += gp.mouseX * s
+	gp.mouseAccY += gp.mouseY * s
+	dx, dy := int(gp.mouseAccX), int(gp.mouseAccY)
+	gp.mouseAccX -= float64(dx)
+	gp.mouseAccY -= float64(dy)
+	if dx == 0 && dy == 0 {
+		return Action{}, false
+	}
+	return Action{Type: ActionMouseMove, DX: dx, DY: dy}, true
 }
 
 func (gp *GamepadReader) SetSensitivity(value int) {

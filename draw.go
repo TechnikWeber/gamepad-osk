@@ -82,6 +82,31 @@ func (r *Renderer) drawLegend(y int32) {
 	}
 }
 
+// drawKeyBadge draws a small button chip into the top-left corner of a key.
+func (r *Renderer) drawKeyBadge(chip LegendChip, x, y int32, onCursor bool, keyBg Color) {
+	f := r.fonts.Badge
+	tw, th := TTF3GetStringSize(f, chip.Label)
+	h := th + 2
+	w := max32(h, tw+h/2+2)
+	inset := max32(3, r.unit/14)
+	rect := FRect{X: float32(x + inset), Y: float32(y + inset), W: float32(w), H: float32(h)}
+	bg, fg := r.legendChipColors(chip)
+	if onCursor && chip.Color.A == 0 {
+		// neutral chip on the blue focus: white chip, focus colour text
+		bg, fg = Color{R: 255, G: 255, B: 255, A: 255}, r.theme.HighlightBg
+	} else if bg == keyBg {
+		// neutral chip on a key of the same colour (Shift, Caps): use the letter-key colour
+		bg, fg = r.theme.KeyBg, r.theme.KeyText
+	}
+	if r.theme.Radius > 0 {
+		r.fillRoundRect(rect, float32(h)/2, bg)
+	} else {
+		setColor(r.renderer, bg)
+		SDL3RenderFillRect(r.renderer, rect)
+	}
+	r.renderText(f, chip.Label, fg, rect, AlignCenter)
+}
+
 // drawLegendItems draws one legend line starting at x; returns the end x.
 func (r *Renderer) drawLegendItems(line []LegendItem, m legendMetrics, x, ly int32) int32 {
 	chipW := func(s string) int32 { w, _ := TTF3GetStringSize(r.fontChip, s); return w }

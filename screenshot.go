@@ -60,6 +60,7 @@ func RenderScreenshot(cfg Config, o ScreenshotOptions) error {
 	SDL3SetRenderDrawBlendMode(sdlr, 1)
 
 	rend := NewRenderer(sdlr, GetTheme(cfg.Theme.Name), unit, pad, fonts, lines, lm)
+	rend.KeyBadges = BuildKeyBadges(cfg, profile)
 	defer rend.Destroy()
 
 	kb := NewKeyboardState(layout)
