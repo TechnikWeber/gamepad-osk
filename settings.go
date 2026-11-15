@@ -54,7 +54,8 @@ var settingsTexts = map[string]map[string]string{
 		"select": "wählen", "change_v": "ändern", "toggle_v": "umschalten", "page_v": "Seite",
 		"save_v": "speichern", "close_v": "schließen",
 		"page_general": "Allgemein", "page_buttons": "Belegung",
-		"mouse_combo": "Nur Maus mit", "key_badges": "Buttons auf den Tasten", "opacity": "Transparenz",
+		"mouse_combo": "Nur Maus mit", "page_test": "Test",
+		"test_hint": "Knöpfe drücken – sie leuchten auf · %s + %s zusammen: zurück", "last": "Zuletzt gedrückt", "press_any": "Drück einen Knopf …", "unused": "nicht belegt", "nav": "Taste wählen", "caps": "Feststelltaste", "mouse_move": "Maus bewegen", "part_of": "mit", "key_badges": "Buttons auf den Tasten", "opacity": "Transparenz",
 		"b_press": "Taste tippen", "b_backspace": "Löschen", "b_space": "Leerzeichen",
 		"b_enter": "Enter", "b_shift": "Großschreiben (halten)", "b_close": "Ausblenden",
 		"b_left_click": "Linksklick", "b_right_click": "Rechtsklick", "b_position": "Oben/Unten wechseln",
@@ -77,7 +78,8 @@ var settingsTexts = map[string]map[string]string{
 		"select": "select", "change_v": "change", "toggle_v": "toggle", "page_v": "page",
 		"save_v": "save", "close_v": "close",
 		"page_general": "General", "page_buttons": "Buttons",
-		"mouse_combo": "Mouse only with", "key_badges": "Buttons on the keys", "opacity": "Transparency",
+		"mouse_combo": "Mouse only with", "page_test": "Test",
+		"test_hint": "Press buttons – they light up · %s + %s together: back", "last": "Last pressed", "press_any": "Press a button …", "unused": "not assigned", "nav": "Select key", "caps": "Caps Lock", "mouse_move": "Move mouse", "part_of": "with", "key_badges": "Buttons on the keys", "opacity": "Transparency",
 		"b_press": "Type key", "b_backspace": "Delete", "b_space": "Space",
 		"b_enter": "Enter", "b_shift": "Shift (hold)", "b_close": "Hide",
 		"b_left_click": "Left click", "b_right_click": "Right click", "b_position": "Top/bottom",
@@ -107,9 +109,10 @@ type settingsUI struct {
 	autostart, origAutostart bool
 	tx                       map[string]string
 	rows                     []settingsRow // rows of the current page
-	pages                    [2][]settingsRow
+	pages                    [3][]settingsRow // General, Buttons, Test (no rows)
 	page                     int
-	tabRects                 [2]FRect
+	tabRects                 [3]FRect
+	tester                   testerState
 	focus                    int // rows, then save button, then close button
 
 	gamepad      *GamepadReader
@@ -350,19 +353,22 @@ func (s *settingsUI) buildRows() {
 	for _, def := range mappingDefs {
 		buttons = append(buttons, s.mappingRow(def))
 	}
-	s.pages = [2][]settingsRow{general, buttons}
+	s.pages = [3][]settingsRow{general, buttons, nil}
 	s.rows = s.pages[s.page]
 }
 
-// setPage switches between "General" and "Buttons".
+// setPage switches between "General", "Buttons" and "Test".
 func (s *settingsUI) setPage(p int) {
-	p = (p%2 + 2) % 2
+	p = (p%3 + 3) % 3
 	if p == s.page {
 		return
 	}
 	s.page = p
 	s.rows = s.pages[p]
 	s.focus = 0
+	if p == 2 {
+		s.focus = 1 // no rows: focus "Close"
+	}
 }
 
 func (s *settingsUI) detectedOr() string {
@@ -606,9 +612,10 @@ func (s *settingsUI) draw() {
 
 	// Page tabs (segmented control, top right)
 	segW, segH := float32(150), float32(34)
-	seg := FRect{X: float32(s.winW-setMargin) - 2*segW, Y: 14, W: 2 * segW, H: segH}
+	segW = 130
+	seg := FRect{X: float32(s.winW-setMargin) - 3*segW, Y: 14, W: 3 * segW, H: segH}
 	r.fillRoundRect(seg, 9, c(224, 224, 229))
-	for i, key := range []string{"page_general", "page_buttons"} {
+	for i, key := range []string{"page_general", "page_buttons", "page_test"} {
 		tr := FRect{X: seg.X + float32(i)*segW, Y: seg.Y, W: segW, H: segH}
 		s.tabRects[i] = tr
 		col := setSubtle
@@ -630,8 +637,12 @@ func (s *settingsUI) draw() {
 		SDL3SetRenderViewport(s.sdl, nil)
 	}
 
-	// Settings panel, two columns
+	// Settings panel, two columns (test page: controller picture)
 	top := s.previewRect.Y + s.previewRect.H + setMargin
+	if s.page == 2 {
+		s.drawTester(FRect{X: setMargin, Y: float32(top), W: float32(s.winW - 2*setMargin),
+			H: float32(int32(s.maxRowsPerColumn()) * setRowH)}) //nolint:gosec // G115: small count
+	}
 	colW := (s.winW - 2*setMargin - setColGap) / 2
 	per := s.rowsPerColumn()
 	s.rowRects = s.rowRects[:0]
@@ -683,6 +694,9 @@ func (s *settingsUI) draw() {
 		parts = append(parts, label(ob.Close)+" "+s.t("close_v"))
 	}
 	hint := strings.Join(parts, " · ")
+	if s.page == 2 {
+		hint = fmt.Sprintf(s.t("test_hint"), label("lb"), label("rb"))
+	}
 	r.renderText(s.uiFonts.Small, hint, setSubtle,
 		FRect{X: 0, Y: by + bh + 10, W: float32(s.winW), H: setHintH}, AlignCenter)
 
@@ -860,6 +874,9 @@ func (s *settingsUI) handleUI(e UIEvent) {
 }
 
 func (s *settingsUI) handleGamepad(a Action) {
+	if s.page == 2 {
+		return // test page: buttons only light up (LB + RB leaves, see updateTester)
+	}
 	switch a.Type {
 	case ActionNavigate:
 		if a.DY != 0 {
@@ -903,8 +920,11 @@ func RunSettings(cfg Config) error {
 	s.tx = settingsTexts[UILanguage(detected)]
 	s.reopenGamepad()
 	s.buildRows()
-	if os.Getenv("GAMEPAD_OSK_SETTINGS_PAGE") == "buttons" { // docs screenshots
+	switch os.Getenv("GAMEPAD_OSK_SETTINGS_PAGE") { // docs screenshots
+	case "buttons":
 		s.setPage(1)
+	case "test":
+		s.setPage(2)
 	}
 
 	if os.Getenv("WAYLAND_DISPLAY") != "" && os.Getenv("SDL_VIDEODRIVER") == "" {
@@ -969,6 +989,7 @@ func RunSettings(cfg Config) error {
 				for _, a := range s.gamepad.ReadEvents() {
 					s.handleGamepad(a)
 				}
+				s.updateTester()
 			} else if time.Since(lastReconnect) > 2*time.Second {
 				lastReconnect = time.Now()
 				before := s.detectedProf

@@ -134,9 +134,17 @@ Start menu → **gamepad-osk Settings**, `gamepad-osk --settings`, or the
 <img src="docs/settings.png" width="640" alt="Settings window: keyboard preview on top, tabs General and Buttons, below two columns with Start at login, Theme, Keyboard layout, Button names, Show/hide with, Mouse only with, Mouse, Mouse speed, Transparency, Show button legend, Position and Size, buttons Close and Save">
 
 D-pad up/down selects, left/right changes, A toggles, LB/RB switch between
-the pages *General* and *Buttons*, Start saves, B closes. On *Buttons* every
+the pages *General*, *Buttons* and *Test*, Start saves, B closes. On *Buttons* every
 function gets the button you choose; a button that is already taken swaps
 with it. Saving restarts the running keyboard so changes apply at once.
+
+The **Test** page shows what the controller reports: every button lights up
+on a controller picture while held, the sticks show their position, and the
+last pressed button is listed with what it does (*Home → Show/hide (with −),
+Mouse only (with +)*). Handy for swapped buttons and unknown symbols.
+LB + RB together go back.
+
+<img src="docs/settings-test.png" width="640" alt="Settings page Test: controller picture with LT, LB, RT, RB, minus, Home, plus, d-pad, X Y A B and two stick circles with a blue dot, on the right Last pressed">
 
 <img src="docs/settings-buttons.png" width="640" alt="Settings page Buttons: Swap A and B, then Type key A, Delete X, Space Y, Enter RT, Shift LT, Hide B, Left click RB, Right click LB, Top/bottom Start">
 

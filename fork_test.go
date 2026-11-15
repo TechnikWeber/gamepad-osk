@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 )
@@ -230,5 +231,22 @@ func TestMouseSpeedIndependentOfPollRate(t *testing.T) {
 	fast, slow := move(4*time.Millisecond), move(20*time.Millisecond)
 	if d := fast - slow; d < -25 || d > 25 {
 		t.Errorf("1 s full stick: %d px at 250 Hz, %d px at 50 Hz - should match", fast, slow)
+	}
+}
+
+func TestTesterFunctions(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Gamepad.Controller = Profile8BitDo
+	s := &settingsUI{cfg: cfg, tx: settingsTexts["de"]}
+	got := strings.Join(s.testerFunctions("guide"), " | ")
+	if got != "Ein-/Ausblenden (mit −) | Nur Maus (mit +)" {
+		t.Errorf("guide: %q", got)
+	}
+	if f := s.testerFunctions("a"); f[0] != "Taste tippen" {
+		t.Errorf("a: %v", f)
+	}
+	s.cfg.Gamepad.SwapAB = true
+	if f := s.testerFunctions("b"); f[0] != "Taste tippen" {
+		t.Errorf("with swap_ab the right button types, got %v", f)
 	}
 }
