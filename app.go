@@ -68,7 +68,10 @@ func (app *App) Run() error {
 
 	cfg := app.config
 	ValidateConfig(&cfg)
-	layout := LayoutQWERTY
+	layoutName := ResolveLayout(cfg.Keys.Layout)
+	layout := LayoutByName(layoutName)
+	lang := UILanguage(layoutName)
+	log.Printf("Keyboard layout: %s, language: %s", layoutName, lang)
 	theme := GetTheme(cfg.Theme.Name)
 
 	// Build dynamic glyph map from button config
@@ -96,12 +99,45 @@ func (app *App) Run() error {
 
 	initX11Detection()
 
+	// Open the gamepad early: the legend shows its button names
+	gamepad := NewGamepadReader(cfg)
+	if !gamepad.Open("") {
+		log.Printf("Warning: no gamepad found")
+		log.Printf("Usage: gamepad-osk --device /dev/input/gamepad0")
+	}
+	defer gamepad.Close()
+
 	// Get primary monitor
 	mon := GetPrimaryMonitor()
 	unit := CalcUnitSize(layout, mon.W, cfg)
 	pad := int32(cfg.Keys.Padding) //nolint:gosec // G115: padding fits in int32
 	statusH := max32(20, int32(float64(unit)*0.4))
 	width, height := CalcWindowSize(layout, unit, pad, statusH)
+
+	fonts, err := LoadFonts(unit, cfg.Keys.FontSize)
+	if err != nil {
+		return err
+	}
+	// Legend: wrap for the window width; reserve the height of the widest
+	// profile so a controller swapped later still fits.
+	var legendLines [][]LegendItem
+	var legendM legendMetrics
+	buildLegend := func(p ControllerProfile) [][]LegendItem {
+		if !cfg.Window.Legend {
+			return nil
+		}
+		lines, m := fonts.MeasureLegend(BuildLegend(gamepad.config, p, lang, app.daemon), unit, width-2*pad)
+		legendM = m
+		return lines
+	}
+	legendLines = buildLegend(gamepad.Profile())
+	maxLines := len(legendLines)
+	for _, p := range ControllerProfiles {
+		maxLines = max(maxLines, len(buildLegend(p)))
+	}
+	if cfg.Window.Legend {
+		height += LegendHeight(make([][]LegendItem, maxLines), legendM, pad)
+	}
 	Debugf("Monitor: %dx%d+%d+%d, scale=%d%%, unit=%d, window=%dx%d",
 		mon.W, mon.H, mon.X, mon.Y, cfg.Keys.Scale, unit, width, height)
 
@@ -147,7 +183,6 @@ func (app *App) Run() error {
 
 	isWayland = os.Getenv("WAYLAND_DISPLAY") != ""
 	var window *Window
-	var err error
 	if isWayland {
 		// Wayland: create roleless surface, attach layer-shell asynchronously
 		setTargetMonitor(mon.X, mon.Y)
@@ -215,10 +250,7 @@ func (app *App) Run() error {
 		// No RestoreFocus here: window is hidden, SDL init does not steal X11 focus when a WM is present
 	}
 
-	rend, err := NewRenderer(renderer, theme, unit, pad)
-	if err != nil {
-		return err
-	}
+	rend := NewRenderer(renderer, theme, unit, pad, fonts, legendLines, legendM)
 	defer rend.Destroy()
 
 	inj, err := NewInjector()
@@ -233,12 +265,6 @@ func (app *App) Run() error {
 		}
 	}()
 
-	gamepad := NewGamepadReader(cfg)
-	if !gamepad.Open("") {
-		log.Printf("Warning: no gamepad found")
-		log.Printf("Usage: gamepad-osk --device /dev/input/gamepad0")
-	}
-	defer gamepad.Close()
 	if cfg.Gamepad.Grab && app.visible {
 		app.grabPending = true
 		app.grabPendingUntil = time.Now().Add(500 * time.Millisecond)
@@ -353,6 +379,7 @@ func (app *App) Run() error {
 				kb.CtrlActive = false
 				kb.AltActive = false
 				kb.MetaActive = false
+				kb.AltGrActive = false
 				kb.ReleaseAltTab(inj)
 				if inj != nil {
 					inj.ReleaseKey(KEY_LEFTSHIFT)
@@ -415,6 +442,7 @@ func (app *App) Run() error {
 				app.reconnectLast = now
 				if gamepad.Reconnect() {
 					rend.Flash("Controller connected")
+					rend.SetLegend(buildLegend(gamepad.Profile()))
 					if app.visible && cfg.Gamepad.Grab {
 						gamepad.Grab()
 					}

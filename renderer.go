@@ -2,13 +2,12 @@ package main
 
 import (
 	"errors"
-	"os"
 	"strings"
 	"time"
 	"unsafe"
 )
 
-const promptFontPath = "/usr/share/fonts/TTF/promptfont.ttf"
+const promptFontPath = "/usr/share/fonts/TTF/promptfont.ttf" // Arch package path
 
 type texCacheKey struct {
 	text string
@@ -30,55 +29,145 @@ type Renderer struct {
 	font           *Font
 	fontSmall      *Font
 	fontGlyph      *Font
+	fontChip       *Font // bold, for legend chips
+	fonts          *FontSet
 	flashText      string
 	flashGlyphText string // rendered with Promptfont, placed before flashText
 	flashEnd       time.Time
 	texCache       map[texCacheKey]texCacheEntry
 	dirtyFrames    int // redraw counter for double/triple buffering
+
+	legend  [][]LegendItem // wrapped legend lines (nil = no legend)
+	legendM legendMetrics
 }
 
-func NewRenderer(r *SDLRenderer, theme Theme, unitSize, padding int32) (*Renderer, error) {
-	fontSize := max32(12, int32(float64(unitSize)*0.32))
-	glyphSize := max32(12, int32(float64(unitSize)*0.28))
+// FontSet holds all fonts plus the fallback fonts they reference.
+type FontSet struct {
+	Font, Small, Chip, Glyph *Font
+	HasPromptFont            bool    // Glyph is Promptfont (controller icons available)
+	owned                    []*Font // everything to close, fallbacks included
+}
 
+// fallbackCodepoints are symbols used in layouts and the legend that many
+// UI fonts lack (arrows, erase, PlayStation shapes, d-pad, euro, micro).
+var fallbackCodepoints = []string{"2190", "232b", "2715", "25cb", "25a1", "25b3", "271a", "2212", "20ac", "00b5", "00b2", "27f9", "27fe"}
+
+// LoadFonts opens the UI font at sizes derived from the key unit and wires
+// up fallback fonts for symbols. fontSize > 0 overrides the label size.
+func LoadFonts(unit int32, fontSize int) (*FontSet, error) {
 	if err := TTF3Init(); err != nil {
 		return nil, err
 	}
-
-	fontPath := findFont("DejaVu Sans", "Liberation Sans", "FreeSans")
+	fontPath := findUIFont()
 	if fontPath == "" {
-		return nil, errors.New("no suitable font found")
+		return nil, errors.New("no suitable font found (install e.g. DejaVu Sans or Noto Sans)")
+	}
+	Debugf("UI font: %s", fontPath)
+
+	size := max32(12, int32(float64(unit)*0.34))
+	if fontSize > 0 {
+		size = int32(fontSize) //nolint:gosec // G115: font size fits in int32
+	}
+	small := max32(10, size-5)
+	glyphSize := max32(12, int32(float64(unit)*0.28))
+
+	fs := &FontSet{}
+	open := func(path string, pt int32) *Font {
+		f, err := TTF3OpenFont(path, float32(pt))
+		if err != nil {
+			return nil
+		}
+		fs.owned = append(fs.owned, f)
+		return f
 	}
 
-	font, err := TTF3OpenFont(fontPath, float32(fontSize))
-	if err != nil {
-		return nil, err
+	fs.Font = open(fontPath, size)
+	fs.Small = open(fontPath, small)
+	fs.Chip = open(fontPath, small)
+	if fs.Font == nil || fs.Small == nil || fs.Chip == nil {
+		fs.Close()
+		return nil, errors.New("cannot open font " + fontPath)
 	}
-	fontSmall, err := TTF3OpenFont(fontPath, float32(max32(10, fontSize-4)))
-	if err != nil {
-		return nil, err
+	TTF3SetBold(fs.Chip)
+
+	// Fallback fonts, deduplicated, in the order fontconfig suggests them
+	seen := map[string]bool{fontPath: true}
+	var fallbacks []string
+	for _, cp := range fallbackCodepoints {
+		if p := fcMatch("sans-serif:charset=" + cp); p != "" && !seen[p] {
+			seen[p] = true
+			fallbacks = append(fallbacks, p)
+		}
+	}
+	if p := findFontFile("DejaVuSans.ttf", "NotoSansSymbols2-Regular.ttf"); p != "" && !seen[p] {
+		fallbacks = append(fallbacks, p)
+	}
+	for _, p := range fallbacks {
+		for _, pair := range []struct {
+			f  *Font
+			pt int32
+		}{{fs.Font, size}, {fs.Small, small}, {fs.Chip, small}} {
+			if fb := open(p, pair.pt); fb != nil {
+				TTF3AddFallback(pair.f, fb)
+			}
+		}
 	}
 
-	var fontGlyph *Font
-	if _, err := os.Stat(promptFontPath); err == nil {
-		fontGlyph, _ = TTF3OpenFont(promptFontPath, float32(glyphSize))
+	if pf := findPromptFont(); pf != "" {
+		fs.Glyph = open(pf, glyphSize)
+		fs.HasPromptFont = fs.Glyph != nil
 	}
-	if fontGlyph == nil {
-		fontGlyph, _ = TTF3OpenFont(fontPath, float32(max32(10, fontSize-6)))
+	if fs.Glyph == nil {
+		fs.Glyph = fs.Small
 	}
+	return fs, nil
+}
 
+// Close releases all fonts of the set.
+func (fs *FontSet) Close() {
+	if fs == nil {
+		return
+	}
+	for _, f := range fs.owned {
+		TTF3CloseFont(f)
+	}
+	fs.owned = nil
+}
+
+// MeasureLegend wraps the legend for the given width using the set's fonts.
+func (fs *FontSet) MeasureLegend(items []LegendItem, unit, maxW int32) ([][]LegendItem, legendMetrics) {
+	m := newLegendMetrics(unit)
+	chipW := func(s string) int32 { w, _ := TTF3GetStringSize(fs.Chip, s); return w }
+	textW := func(s string) int32 { w, _ := TTF3GetStringSize(fs.Small, s); return w }
+	return layoutLegend(items, m, maxW, chipW, textW), m
+}
+
+// LegendHeight is the extra window height the wrapped legend needs.
+func LegendHeight(lines [][]LegendItem, m legendMetrics, pad int32) int32 {
+	if len(lines) == 0 {
+		return 0
+	}
+	return int32(len(lines))*m.lineH + pad //nolint:gosec // G115: line count fits in int32
+}
+
+func NewRenderer(r *SDLRenderer, theme Theme, unitSize, padding int32, fs *FontSet,
+	legend [][]LegendItem, lm legendMetrics) *Renderer {
 	return &Renderer{
 		renderer:    r,
 		theme:       theme,
 		unit:        unitSize,
 		pad:         padding,
 		statusH:     max32(20, int32(float64(unitSize)*0.4)),
-		font:        font,
-		fontSmall:   fontSmall,
-		fontGlyph:   fontGlyph,
+		font:        fs.Font,
+		fontSmall:   fs.Small,
+		fontGlyph:   fs.Glyph,
+		fontChip:    fs.Chip,
+		fonts:       fs,
 		texCache:    make(map[texCacheKey]texCacheEntry),
 		dirtyFrames: 3, // force initial draw
-	}, nil
+		legend:      legend,
+		legendM:     lm,
+	}
 }
 
 func (r *Renderer) Draw(kb *KeyboardState) {
@@ -108,6 +197,11 @@ func (r *Renderer) Draw(kb *KeyboardState) {
 			x += int32(key.Width*float64(r.unit)) + r.pad
 		}
 		y += r.unit + r.pad
+	}
+
+	// Button legend below the keys
+	if len(r.legend) > 0 {
+		r.drawLegend(y)
 	}
 
 	// Accent popup
@@ -188,8 +282,12 @@ func (r *Renderer) drawPill(label string, x, y int32, bg Color, fg Color) {
 	pw := int32(entry.w) + 10
 	ph := int32(entry.h) + 4
 	pill := FRect{X: float32(x), Y: float32(y), W: float32(pw), H: float32(ph)}
-	setColor(r.renderer, bg)
-	SDL3RenderFillRect(r.renderer, pill)
+	if r.theme.Radius > 0 {
+		r.fillRoundRect(pill, float32(ph)/2, bg)
+	} else {
+		setColor(r.renderer, bg)
+		SDL3RenderFillRect(r.renderer, pill)
+	}
 	dst := FRect{X: float32(x + 5), Y: float32(y + 2), W: entry.w, H: entry.h}
 	SDL3RenderTexture(r.renderer, entry.tex, nil, &dst)
 }
@@ -240,18 +338,32 @@ func (r *Renderer) drawKey(key KeyDef, x, y int32, isCursor bool, kb *KeyboardSt
 		bg, border = t.KeyBg, t.KeyBorder
 	}
 
-	// Fill
-	setColor(r.renderer, bg)
-	SDL3RenderFillRect(r.renderer, rect)
-	// Border
-	setColor(r.renderer, border)
-	SDL3RenderRect(r.renderer, rect)
+	if t.Radius > 0 {
+		// Rounded key with a soft shadow line below (phone-style themes)
+		rad := float32(t.Radius * float64(h))
+		if t.KeyShadow.A > 0 && !isCursor {
+			sh := rect
+			sh.Y += max32f(1, float32(h)/40)
+			r.fillRoundRect(sh, rad, t.KeyShadow)
+		}
+		r.fillRoundRect(rect, rad, bg)
+	} else {
+		// Fill
+		setColor(r.renderer, bg)
+		SDL3RenderFillRect(r.renderer, rect)
+		// Border
+		setColor(r.renderer, border)
+		SDL3RenderRect(r.renderer, rect)
+	}
 
 	// Label
 	label := kb.DisplayLabel(key)
 	tc := t.KeyText
 	if isCursor || flashed {
 		tc = Color{R: 255, G: 255, B: 255, A: 255}
+		if t.CursorText.A > 0 {
+			tc = t.CursorText
+		}
 	} else if key.IsModifier && isModActive(key, kb) {
 		tc = t.ModifierActiveText
 	}
@@ -274,8 +386,15 @@ func (r *Renderer) drawKey(key KeyDef, x, y int32, isCursor bool, kb *KeyboardSt
 		}
 	}
 
-	// Controller glyph (bottom-right)
-	if glyph, ok := KeyGlyphs[key.Code]; ok && r.fontGlyph != nil {
+	// AltGr hint (bottom-left), German layout: @ € { [ ] } \ ~ | ...
+	if key.AltGrLabel != "" && !isCursor && !kb.AltGrActive {
+		r.renderText(r.fontSmall, key.AltGrLabel, t.ModifierText,
+			FRect{X: float32(x + 4), Y: float32(y), W: float32(w - 4), H: float32(h - 2)}, AlignBottomLeft)
+	}
+
+	// Controller glyph (bottom-right); only with Promptfont, the legend
+	// explains the buttons otherwise
+	if glyph, ok := KeyGlyphs[key.Code]; ok && r.fonts.HasPromptFont {
 		r.renderText(r.fontGlyph, glyph, t.GlyphColor,
 			FRect{X: float32(x), Y: float32(y), W: float32(w - 3), H: float32(h - 2)}, AlignBottomRight)
 	}
@@ -295,19 +414,38 @@ func (r *Renderer) drawAccentPopup(kb *KeyboardState) {
 
 	tw := int32(len(accents))*(r.unit+r.pad) + r.pad //nolint:gosec // G115: accent count fits in int32
 	pr := FRect{X: float32(xo), Y: float32(py), W: float32(tw), H: float32(r.unit + r.pad*2)}
-	setColor(r.renderer, r.theme.AccentPopupBg)
-	SDL3RenderFillRect(r.renderer, pr)
-	setColor(r.renderer, r.theme.HighlightBorder)
-	SDL3RenderRect(r.renderer, pr)
+	rounded := r.theme.Radius > 0
+	rad := float32(r.theme.Radius * float64(r.unit))
+	if rounded {
+		if r.theme.KeyShadow.A > 0 {
+			sh := pr
+			sh.Y += 2
+			r.fillRoundRect(sh, rad+float32(r.pad), r.theme.KeyShadow)
+		}
+		r.fillRoundRect(pr, rad+float32(r.pad), r.theme.AccentPopupBg)
+	} else {
+		setColor(r.renderer, r.theme.AccentPopupBg)
+		SDL3RenderFillRect(r.renderer, pr)
+		setColor(r.renderer, r.theme.HighlightBorder)
+		SDL3RenderRect(r.renderer, pr)
+	}
 
 	ax := xo + r.pad
 	for i, accent := range accents {
 		ar := FRect{X: float32(ax), Y: float32(py + r.pad), W: float32(r.unit), H: float32(r.unit)}
+		tc := r.theme.AccentPopupText
 		if i == sel {
-			setColor(r.renderer, r.theme.AccentHighlightBg)
-			SDL3RenderFillRect(r.renderer, ar)
+			if rounded {
+				r.fillRoundRect(ar, rad, r.theme.AccentHighlightBg)
+				if r.theme.CursorText.A > 0 {
+					tc = r.theme.CursorText
+				}
+			} else {
+				setColor(r.renderer, r.theme.AccentHighlightBg)
+				SDL3RenderFillRect(r.renderer, ar)
+			}
 		}
-		r.renderText(r.font, accent.Label, r.theme.AccentPopupText, ar, AlignCenter)
+		r.renderText(r.font, accent.Label, tc, ar, AlignCenter)
 		ax += r.unit + r.pad
 	}
 }
@@ -318,6 +456,8 @@ const (
 	AlignCenter TextAlign = iota
 	AlignTopRight
 	AlignBottomRight
+	AlignBottomLeft
+	AlignLeft
 )
 
 func (r *Renderer) renderText(font *Font, text string, color Color, rect FRect, align TextAlign) {
@@ -325,6 +465,14 @@ func (r *Renderer) renderText(font *Font, text string, color Color, rect FRect, 
 	if entry.tex == nil {
 		return
 	}
+
+	// Shrink labels that do not fit (long translated labels, small keys)
+	tw, th := entry.w, entry.h
+	if maxW := rect.W - 6; align == AlignCenter && maxW > 0 && tw > maxW {
+		th *= maxW / tw
+		tw = maxW
+	}
+	entry.w, entry.h = tw, th
 
 	var dst FRect
 	switch align {
@@ -346,8 +494,27 @@ func (r *Renderer) renderText(font *Font, text string, color Color, rect FRect, 
 			Y: rect.Y + rect.H - entry.h,
 			W: entry.w, H: entry.h,
 		}
+	case AlignBottomLeft:
+		dst = FRect{
+			X: rect.X,
+			Y: rect.Y + rect.H - entry.h,
+			W: entry.w, H: entry.h,
+		}
+	case AlignLeft:
+		dst = FRect{
+			X: rect.X,
+			Y: rect.Y + (rect.H-entry.h)/2,
+			W: entry.w, H: entry.h,
+		}
 	}
 	SDL3RenderTexture(r.renderer, entry.tex, nil, &dst)
+}
+
+// SetLegend replaces the legend lines (e.g. after a different controller connected).
+func (r *Renderer) SetLegend(lines [][]LegendItem) {
+	r.legend = lines
+	r.flushTexCache()
+	r.MarkDirty()
 }
 
 func (r *Renderer) SetTheme(t Theme) {
@@ -382,15 +549,7 @@ func (r *Renderer) FlashGlyph(glyph string, text string) {
 
 func (r *Renderer) Destroy() {
 	r.flushTexCache()
-	if r.font != nil {
-		TTF3CloseFont(r.font)
-	}
-	if r.fontSmall != nil {
-		TTF3CloseFont(r.fontSmall)
-	}
-	if r.fontGlyph != nil {
-		TTF3CloseFont(r.fontGlyph)
-	}
+	r.fonts.Close()
 }
 
 func CalcUnitSize(layout [][]KeyDef, screenWidth int32, cfg Config) int32 {
@@ -453,38 +612,10 @@ func isModActive(key KeyDef, kb *KeyboardState) bool {
 		return kb.AltActive
 	case "meta":
 		return kb.MetaActive
+	case "altgr":
+		return kb.AltGrActive
 	}
 	return false
-}
-
-func findFont(names ...string) string {
-	// Common font directories on Linux
-	dirs := []string{
-		"/usr/share/fonts/TTF",
-		"/usr/share/fonts/truetype/dejavu",
-		"/usr/share/fonts/truetype/liberation",
-		"/usr/share/fonts/truetype/freefont",
-		"/usr/share/fonts/truetype",
-		"/usr/share/fonts",
-	}
-	filePatterns := map[string][]string{
-		"DejaVu Sans":    {"DejaVuSans.ttf"},
-		"Liberation Sans": {"LiberationSans-Regular.ttf"},
-		"FreeSans":        {"FreeSans.ttf"},
-	}
-
-	for _, name := range names {
-		patterns := filePatterns[name]
-		for _, dir := range dirs {
-			for _, pat := range patterns {
-				path := dir + "/" + pat
-				if _, err := os.Stat(path); err == nil {
-					return path
-				}
-			}
-		}
-	}
-	return ""
 }
 
 // hasPromptfontRune returns true if the string contains codepoints from

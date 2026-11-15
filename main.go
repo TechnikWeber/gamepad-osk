@@ -9,7 +9,7 @@ import (
 	"syscall"
 )
 
-var version = "2.1.1"
+var version = "2.2.0-tw"
 
 // Verbose controls debug logging throughout the app
 var Verbose bool
@@ -18,6 +18,8 @@ func main() {
 	args := os.Args[1:]
 
 	var devicePath, themeName, configPath string
+	var layoutName, controllerName string
+	shot := ScreenshotOptions{CursorRow: -1, CursorCol: -1}
 	daemon := false
 	setupMode := false
 	installMode := false
@@ -60,6 +62,27 @@ func main() {
 				fmt.Fprintln(os.Stderr, "Error: --theme requires a name")
 				os.Exit(1)
 			}
+		case "--layout", "--controller", "--screenshot", "--cursor":
+			if i+1 >= len(args) {
+				fmt.Fprintf(os.Stderr, "Error: %s requires a value\n", args[i])
+				os.Exit(1)
+			}
+			i++
+			switch args[i-1] {
+			case "--layout":
+				layoutName = strings.ToLower(args[i])
+			case "--controller":
+				controllerName = strings.ToLower(args[i])
+			case "--screenshot":
+				shot.Path = args[i]
+			case "--cursor":
+				if _, err := fmt.Sscanf(args[i], "%d,%d", &shot.CursorRow, &shot.CursorCol); err != nil {
+					fmt.Fprintln(os.Stderr, "Error: --cursor expects ROW,COL")
+					os.Exit(1)
+				}
+			}
+		case "--shift":
+			shot.Shift = true
 		case "--config", "-c":
 			if i+1 < len(args) {
 				i++
@@ -101,6 +124,26 @@ func main() {
 			os.Exit(1)
 		}
 		config.Theme.Name = themeName
+	}
+	if layoutName != "" {
+		config.Keys.Layout = layoutName
+	}
+	if controllerName != "" {
+		if _, ok := ControllerProfiles[controllerName]; !ok && controllerName != ProfileAuto {
+			fmt.Fprintf(os.Stderr, "Error: unknown controller %q (auto, xbox, playstation, nintendo, generic)\n", controllerName)
+			os.Exit(1)
+		}
+		config.Gamepad.Controller = controllerName
+	}
+
+	// --screenshot: render once off-screen and exit (README/blog images)
+	if shot.Path != "" {
+		shot.Profile = config.Gamepad.Controller
+		if err := RenderScreenshot(config, shot); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
 	// Check for existing instance before starting
@@ -191,6 +234,10 @@ OPTIONS
   --device, -d PATH    Input device (overrides config, overrides auto-detect)
   --theme, -t NAME     Color theme (overrides config)
   --config, -c PATH    Config file path (overrides search order)
+  --layout NAME        Key layout: auto, us (QWERTY), de (QWERTZ)
+  --controller NAME    Button names: auto, xbox, playstation, nintendo, generic
+  --screenshot FILE    Render the keyboard into a BMP file and exit
+                       (with --cursor ROW,COL and --shift for the picture)
   --toggle             Toggle visibility of running instance (for evsieve/hotkey)
   --daemon             Start hidden, wait for toggle combo or --toggle to show
                        Close button (B) hides instead of exiting in daemon mode

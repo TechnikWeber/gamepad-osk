@@ -37,6 +37,7 @@ type WindowConfig struct {
 	BottomMargin int     // deprecated, migrated to Margin
 	Opacity      float64
 	PanelAvoid   bool    // Wayland: respect panel exclusive zones (false = always screen edge)
+	Legend       bool    // show the button legend below the keys
 }
 
 type KeysConfig struct {
@@ -46,6 +47,7 @@ type KeysConfig struct {
 	Scale         int // percentage of screen width (30-100, default 50)
 	RepeatDelayMs int // ms before key repeat starts (default 400)
 	RepeatRateMs  int // ms between repeats (default 80)
+	Layout        string // auto, us, de (auto = follow the desktop keyboard layout)
 }
 
 type ButtonsConfig struct {
@@ -69,6 +71,7 @@ type GamepadConfig struct {
 	MouseStick    string // "left" or "right" (nav uses the other stick)
 	ToggleCombo   string // e.g. "select+start", empty = disabled
 	ComboPeriodMs int    // timing window for combo detection (default 200)
+	Controller    string // auto, xbox, playstation, nintendo, generic (button labels)
 	Buttons       ButtonsConfig
 }
 
@@ -79,16 +82,18 @@ type MouseConfig struct {
 
 func DefaultConfig() Config {
 	return Config{
-		Theme:  ThemeConfig{Name: "matrix"},
-		Window: WindowConfig{Position: "bottom", Margin: 0, Opacity: 0.95, PanelAvoid: true},
-		Keys:   KeysConfig{UnitSize: 0, Padding: 4, FontSize: 0, Scale: 50, RepeatDelayMs: 400, RepeatRateMs: 80},
+		Theme:  ThemeConfig{Name: DefaultThemeName},
+		Window: WindowConfig{Position: "bottom", Margin: 0, Opacity: 0.95, PanelAvoid: true, Legend: true},
+		Keys:   KeysConfig{UnitSize: 0, Padding: 6, FontSize: 0, Scale: 50, RepeatDelayMs: 400, RepeatRateMs: 80, Layout: "auto"},
 		Gamepad: GamepadConfig{
 			Grab:          true,
 			Deadzone:      0.25,
 			LongPressMs:   500,
 			SwapXY:        "auto",
 			MouseStick:    "right",
+			ToggleCombo:   "guide+select",
 			ComboPeriodMs: 200,
+			Controller:    ProfileAuto,
 			Buttons: ButtonsConfig{
 				Press:      "a",
 				Close:      "b",
@@ -178,6 +183,8 @@ func parseINI(r io.Reader, cfg *Config) error {
 				}
 			case "panel_avoid":
 				cfg.Window.PanelAvoid = parseBool("panel_avoid", val, true)
+			case "legend":
+				cfg.Window.Legend = parseBool("legend", val, true)
 			default:
 				Debugf("unknown config key: window.%s", key)
 			}
@@ -207,6 +214,8 @@ func parseINI(r io.Reader, cfg *Config) error {
 				if n, err := strconv.Atoi(val); err == nil {
 					cfg.Keys.RepeatRateMs = n
 				}
+			case "layout":
+				cfg.Keys.Layout = strings.ToLower(val)
 			default:
 				Debugf("unknown config key: keys.%s", key)
 			}
@@ -234,6 +243,8 @@ func parseINI(r io.Reader, cfg *Config) error {
 				if n, err := strconv.Atoi(val); err == nil {
 					cfg.Gamepad.ComboPeriodMs = n
 				}
+			case "controller":
+				cfg.Gamepad.Controller = strings.ToLower(val)
 			default:
 				Debugf("unknown config key: gamepad.%s", key)
 			}
@@ -290,7 +301,7 @@ func writeINI(w io.Writer, cfg Config) error {
 	b.WriteString("# gamepad-osk configuration\n\n")
 
 	b.WriteString("[theme]\n")
-	b.WriteString(line(kv("name", cfg.Theme.Name), "see --help for full list (60 themes)"))
+	b.WriteString(line(kv("name", cfg.Theme.Name), "light (default), night, matrix, ... see --help for all"))
 	b.WriteString("\n")
 
 	b.WriteString("[window]\n")
@@ -298,6 +309,7 @@ func writeINI(w io.Writer, cfg Config) error {
 	b.WriteString(line(kvf("margin", cfg.Window.Margin), "pixels from screen edge"))
 	b.WriteString(line(kv("opacity", strconv.FormatFloat(cfg.Window.Opacity, 'f', -1, 64)), "0.0-1.0 (1.0 = fully opaque)"))
 	b.WriteString(line(kv("panel_avoid", strconv.FormatBool(cfg.Window.PanelAvoid)), "Wayland: respect panel spacing (false = always screen edge)"))
+	b.WriteString(line(kv("legend", strconv.FormatBool(cfg.Window.Legend)), "show which controller button does what, below the keys"))
 	b.WriteString("\n")
 
 	b.WriteString("[keys]\n")
@@ -307,6 +319,7 @@ func writeINI(w io.Writer, cfg Config) error {
 	b.WriteString(line(kvf("scale", cfg.Keys.Scale), "percentage of screen width (30-100)"))
 	b.WriteString(line(kvf("repeat_delay_ms", cfg.Keys.RepeatDelayMs), "ms before key repeat starts (100-2000)"))
 	b.WriteString(line(kvf("repeat_rate_ms", cfg.Keys.RepeatRateMs), "ms between repeats (20-500)"))
+	b.WriteString(line(kv("layout", cfg.Keys.Layout), "auto = like the desktop, us (QWERTY) or de (QWERTZ)"))
 	b.WriteString("\n")
 
 	b.WriteString("[gamepad]\n")
@@ -314,6 +327,7 @@ func writeINI(w io.Writer, cfg Config) error {
 	b.WriteString(line(kvf("grab", cfg.Gamepad.Grab), "grab device when visible (prevents input bleed to game)"))
 b.WriteString(line(kv("deadzone", strconv.FormatFloat(cfg.Gamepad.Deadzone, 'f', -1, 64)), "stick deadzone (0.0-1.0)"))
 	b.WriteString(line(kvf("long_press_ms", cfg.Gamepad.LongPressMs), "ms to hold for accent popup (100-5000)"))
+	b.WriteString(line(kv("controller", cfg.Gamepad.Controller), "auto, xbox, playstation, nintendo (also 8BitDo) or generic - button names in the legend"))
 	b.WriteString(line(kv("swap_xy", cfg.Gamepad.SwapXY), "auto = detect xpad/xpadneo/xone drivers (default), true = force swap, false = off"))
 	b.WriteString(line(kv("mouse_stick", cfg.Gamepad.MouseStick), "left or right - nav uses the other stick"))
 	b.WriteString(line(kv("toggle_combo", cfg.Gamepad.ToggleCombo), "built-in show/hide combo (empty = disabled, use --toggle/evsieve)"))
@@ -726,8 +740,18 @@ func ValidateConfig(cfg *Config) {
 		cfg.Keys.Scale = 50
 	}
 	if _, ok := Themes[cfg.Theme.Name]; !ok {
-		log.Printf("Warning: unknown theme %q, using dark", cfg.Theme.Name)
-		cfg.Theme.Name = "matrix"
+		log.Printf("Warning: unknown theme %q, using %s", cfg.Theme.Name, DefaultThemeName)
+		cfg.Theme.Name = DefaultThemeName
+	}
+	switch cfg.Keys.Layout {
+	case "auto", "us", "de":
+	default:
+		log.Printf("Warning: unknown layout %q, using auto", cfg.Keys.Layout)
+		cfg.Keys.Layout = "auto"
+	}
+	if _, ok := ControllerProfiles[cfg.Gamepad.Controller]; !ok && cfg.Gamepad.Controller != ProfileAuto {
+		log.Printf("Warning: unknown controller %q, using auto", cfg.Gamepad.Controller)
+		cfg.Gamepad.Controller = ProfileAuto
 	}
 	if cfg.Keys.RepeatDelayMs < 100 || cfg.Keys.RepeatDelayMs > 2000 {
 		log.Printf("Warning: repeat_delay_ms %d out of range [100,2000], using 400", cfg.Keys.RepeatDelayMs)

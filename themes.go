@@ -18,7 +18,16 @@ type Theme struct {
 	AccentPopupText    Color
 	AccentHighlightBg  Color
 	GlyphColor         Color
+
+	// Fork additions. Zero values keep the original flat look.
+	Radius     float64 // key corner radius as fraction of the key height (0 = square)
+	KeyShadow  Color   // 1-2 px shadow under each key (A = 0: none)
+	CursorText Color   // label colour on the highlighted key (A = 0: white)
+	Bold       bool    // render key labels in bold
 }
+
+// DefaultThemeName is the theme used when the config names none or an unknown one.
+const DefaultThemeName = "light"
 
 func c(r, g, b uint8) Color { return Color{R: r, G: g, B: b, A: 255} }
 
@@ -26,6 +35,25 @@ var w = c(255, 255, 255) // white pill text
 var d = c(20, 20, 20)    // dark pill text
 
 var Themes = map[string]Theme{
+	// --- Fork: friendly, phone-style themes ---
+	// Light grey tray, white letter keys, grey function keys, blue focus,
+	// rounded corners and a soft shadow (iOS-like palette).
+	"light": {Name: "light", Bg: c(209, 212, 219), KeyBg: c(255, 255, 255), KeyBgPressed: c(225, 228, 233),
+		KeyBorder: c(255, 255, 255), KeyText: c(16, 16, 18), HighlightBg: c(10, 132, 255),
+		HighlightBorder: c(10, 132, 255), ModifierBg: c(171, 177, 188),
+		ModifierActiveBg: c(255, 255, 255), ModifierActiveText: c(16, 16, 18), ModifierText: c(104, 108, 116),
+		FnKeyBg: c(171, 177, 188), AccentPopupBg: c(255, 255, 255),
+		AccentPopupText: c(16, 16, 18), AccentHighlightBg: c(10, 132, 255), GlyphColor: c(120, 124, 132),
+		Radius: 0.16, KeyShadow: c(136, 139, 145), CursorText: c(255, 255, 255)},
+	// Same shape in dark: for evenings and dark desktops.
+	"night": {Name: "night", Bg: c(38, 38, 42), KeyBg: c(102, 102, 108), KeyBgPressed: c(125, 125, 132),
+		KeyBorder: c(102, 102, 108), KeyText: c(250, 250, 252), HighlightBg: c(10, 132, 255),
+		HighlightBorder: c(10, 132, 255), ModifierBg: c(66, 66, 72),
+		ModifierActiveBg: c(250, 250, 252), ModifierActiveText: c(16, 16, 18), ModifierText: c(170, 170, 178),
+		FnKeyBg: c(66, 66, 72), AccentPopupBg: c(102, 102, 108),
+		AccentPopupText: c(250, 250, 252), AccentHighlightBg: c(10, 132, 255), GlyphColor: c(160, 160, 168),
+		Radius: 0.16, KeyShadow: c(20, 20, 22), CursorText: c(255, 255, 255)},
+
 	// --- Core themes ---
 	"dark": {Name: "dark", Bg: c(30, 30, 35), KeyBg: c(55, 55, 65), KeyBgPressed: c(80, 80, 95),
 		KeyBorder: c(70, 70, 80), KeyText: c(220, 220, 230), HighlightBg: c(60, 110, 180),
@@ -411,5 +439,5 @@ func GetTheme(name string) Theme {
 	if t, ok := Themes[name]; ok {
 		return t
 	}
-	return Themes["dark"]
+	return Themes[DefaultThemeName]
 }

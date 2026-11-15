@@ -12,8 +12,8 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.Theme.Name != "matrix" {
-		t.Errorf("default theme = %q, want matrix", cfg.Theme.Name)
+	if cfg.Theme.Name != DefaultThemeName {
+		t.Errorf("default theme = %q, want %s", cfg.Theme.Name, DefaultThemeName)
 	}
 	if cfg.Window.Position != "bottom" {
 		t.Errorf("default position = %q, want bottom", cfg.Window.Position)
@@ -58,7 +58,7 @@ func TestValidateConfig(t *testing.T) {
 		{"long_press_ms too low", func(c *Config) { c.Gamepad.LongPressMs = 10 },
 			func(c *Config) bool { return c.Gamepad.LongPressMs == 500 }, "should reset to 500"},
 		{"unknown theme", func(c *Config) { c.Theme.Name = "nonexistent" },
-			func(c *Config) bool { return c.Theme.Name == "matrix" }, "should reset to matrix"},
+			func(c *Config) bool { return c.Theme.Name == DefaultThemeName }, "should reset to default"},
 		{"valid theme", func(c *Config) { c.Theme.Name = "nord" },
 			func(c *Config) bool { return c.Theme.Name == "nord" }, "should keep nord"},
 	}
@@ -283,14 +283,14 @@ func TestGetTheme(t *testing.T) {
 		t.Errorf("GetTheme(nord) = %q, want nord", nord.Name)
 	}
 	fallback := GetTheme("nonexistent")
-	if fallback.Name != "dark" {
-		t.Errorf("GetTheme(nonexistent) = %q, want dark fallback", fallback.Name)
+	if fallback.Name != DefaultThemeName {
+		t.Errorf("GetTheme(nonexistent) = %q, want %s fallback", fallback.Name, DefaultThemeName)
 	}
 }
 
 func TestThemeCount(t *testing.T) {
-	if len(Themes) != 60 {
-		t.Errorf("theme count = %d, want 60", len(Themes))
+	if len(Themes) != 62 {
+		t.Errorf("theme count = %d, want 62", len(Themes))
 	}
 	// Spot-check new mid-range themes
 	for _, name := range []string{"chalk", "fjord", "sand", "plum", "moss"} {

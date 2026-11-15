@@ -133,6 +133,8 @@ type GamepadReader struct {
 	hasAxis      map[uint16]bool
 	dinputLayout bool
 
+	profileID string // controller profile (button labels), see controller.go
+
 	// Toggle combo state
 	comboButtons    []ComboButton     // parsed from config at startup (nil = disabled)
 	comboPeriodMs   int               // timing window
@@ -211,6 +213,32 @@ func (gp *GamepadReader) detectLayout() {
 	gp.setStickAxes()
 }
 
+// detectProfile picks the controller profile (button labels for the legend).
+func (gp *GamepadReader) detectProfile(path string) {
+	want := gp.config.Gamepad.Controller
+	if want != "" && want != ProfileAuto {
+		gp.profileID = GetControllerProfile(want).ID
+		log.Printf("Controller profile: %s (from config)", GetControllerProfile(want).Name)
+		return
+	}
+	info := readDeviceInfo(path)
+	gp.profileID = detectProfile(info, gp.dinputLayout)
+	log.Printf("Controller profile: %s (auto: driver=%s vendor=%s)",
+		GetControllerProfile(gp.profileID).Name, info.Driver, info.Vendor)
+}
+
+// Profile returns the active controller profile.
+func (gp *GamepadReader) Profile() ControllerProfile {
+	id := gp.profileID
+	if id == "" {
+		id = gp.config.Gamepad.Controller
+	}
+	if id == "" || id == ProfileAuto {
+		id = ProfileXbox
+	}
+	return GetControllerProfile(id)
+}
+
 // initButtonMap builds the action map and finds special button codes.
 // Called after device open so swap_xy auto-detect can take effect.
 func (gp *GamepadReader) initButtonMap() {
@@ -268,6 +296,7 @@ func (gp *GamepadReader) Open(devicePath string) bool {
 	gp.fd = fd
 	gp.readAxisInfo()
 	gp.detectLayout()
+	gp.detectProfile(path)
 	// Auto-detect swap_xy for Xbox controllers (xpad/xpadneo/xone drivers
 	// emit BTN_X (=0x133, kernel alias for BTN_NORTH) for the physical X
 	// button at the WEST position). SDL2's gamecontrollerdb compensates for

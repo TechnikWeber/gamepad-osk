@@ -38,6 +38,14 @@ static SDL_Window* create_window_props(const char *title, int x, int y, int w, i
     SDL_DestroyProperties(props);
     return win;
 }
+
+// Draw a list of solid-colour triangles (xy holds 6 floats per triangle).
+static bool render_triangles(SDL_Renderer *r, const float *xy, int n_vertices,
+    Uint8 cr, Uint8 cg, Uint8 cb, Uint8 ca) {
+    SDL_FColor col = { cr / 255.0f, cg / 255.0f, cb / 255.0f, ca / 255.0f };
+    return SDL_RenderGeometryRaw(r, NULL, xy, 2 * sizeof(float), &col, 0,
+        NULL, 0, n_vertices, NULL, 0, 0);
+}
 */
 import "C"
 import (
@@ -326,3 +334,39 @@ const (
 const (
 	SDL_INIT_VIDEO uint32 = 0x00000020
 )
+
+// --- Extra drawing helpers (fork: rounded keys, legend shapes, screenshots) ---
+
+// SDL3RenderTriangles draws solid triangles; xy holds x,y pairs, 3 per triangle.
+func SDL3RenderTriangles(r *SDLRenderer, xy []float32, c Color) {
+	if len(xy) < 6 {
+		return
+	}
+	C.render_triangles((*C.SDL_Renderer)(r.ptr), (*C.float)(unsafe.Pointer(&xy[0])), C.int(len(xy)/2),
+		C.Uint8(c.R), C.Uint8(c.G), C.Uint8(c.B), C.Uint8(c.A))
+}
+
+// SDL3CreateSurfaceRenderer creates an off-screen software renderer drawing
+// into a new RGBA surface (used for --screenshot, needs no display).
+func SDL3CreateSurfaceRenderer(w, h int32) (*SDLRenderer, *Surface, error) {
+	surf := C.SDL_CreateSurface(C.int(w), C.int(h), C.SDL_PIXELFORMAT_ARGB8888)
+	if surf == nil {
+		return nil, nil, fmt.Errorf("SDL_CreateSurface: %s", C.GoString(C.SDL_GetError()))
+	}
+	r := C.SDL_CreateSoftwareRenderer(surf)
+	if r == nil {
+		C.SDL_DestroySurface(surf)
+		return nil, nil, fmt.Errorf("SDL_CreateSoftwareRenderer: %s", C.GoString(C.SDL_GetError()))
+	}
+	return &SDLRenderer{ptr: unsafe.Pointer(r)}, &Surface{ptr: unsafe.Pointer(surf)}, nil
+}
+
+// SDL3SaveBMP writes a surface to a BMP file.
+func SDL3SaveBMP(s *Surface, path string) error {
+	cp := C.CString(path)
+	defer C.free(unsafe.Pointer(cp))
+	if !C.SDL_SaveBMP((*C.SDL_Surface)(s.ptr), cp) {
+		return fmt.Errorf("SDL_SaveBMP: %s", C.GoString(C.SDL_GetError()))
+	}
+	return nil
+}

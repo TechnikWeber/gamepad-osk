@@ -54,3 +54,18 @@ func TTF3GetStringSize(f *Font, text string) (int32, int32) {
 	C.TTF_GetStringSize((*C.TTF_Font)(f.ptr), ct, 0, &w, &h)
 	return int32(w), int32(h)
 }
+
+// TTF3SetBold switches a font to bold rendering.
+func TTF3SetBold(f *Font) {
+	if f != nil {
+		C.TTF_SetFontStyle((*C.TTF_Font)(f.ptr), C.TTF_STYLE_BOLD)
+	}
+}
+
+// TTF3AddFallback lets font use fallback for glyphs it does not have.
+func TTF3AddFallback(font, fallback *Font) bool {
+	if font == nil || fallback == nil {
+		return false
+	}
+	return bool(C.TTF_AddFallbackFont((*C.TTF_Font)(font.ptr), (*C.TTF_Font)(fallback.ptr)))
+}

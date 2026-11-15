@@ -15,6 +15,7 @@ type KeyboardState struct {
 	CtrlActive      bool
 	AltActive       bool
 	MetaActive      bool
+	AltGrActive     bool
 	LongPressStart  time.Time
 	LongPressActive bool
 	AccentPopup     *AccentPopupState
@@ -110,6 +111,9 @@ func (kb *KeyboardState) CurrentKey() KeyDef {
 }
 
 func (kb *KeyboardState) DisplayLabel(key KeyDef) string {
+	if kb.AltGrActive && key.AltGrLabel != "" {
+		return key.AltGrLabel
+	}
 	if (kb.ShiftActive != kb.CapsActive) && key.ShiftLabel != "" {
 		return key.ShiftLabel
 	}
@@ -133,7 +137,7 @@ func (kb *KeyboardState) PressCurrent(inj *Injector) {
 	}
 
 	// Paste/Copy button - Paste normally, Copy when shifted
-	if key.Label == "Paste" {
+	if KeyAction(key) == "paste" {
 		shiftOn := kb.ShiftActive != kb.CapsActive
 		if shiftOn {
 			if inj != nil {
@@ -149,7 +153,7 @@ func (kb *KeyboardState) PressCurrent(inj *Injector) {
 	}
 
 	// Cfg button - cycle theme (shift = reverse)
-	if key.Label == "Cfg" {
+	if KeyAction(key) == "cfg" {
 		shiftOn := kb.ShiftActive != kb.CapsActive
 		if shiftOn {
 			if kb.OnThemeCycleReverse != nil {
@@ -167,7 +171,7 @@ func (kb *KeyboardState) PressCurrent(inj *Injector) {
 	shiftOn := kb.ShiftActive != kb.CapsActive
 
 	// AltTab cycling: hold Alt across multiple Tab presses
-	if key.Label == "AltTab" && !shiftOn {
+	if KeyAction(key) == "alttab" && !shiftOn {
 		if !kb.AltTabHeld {
 			if inj != nil {
 				inj.HoldKey(KEY_LEFTALT)
@@ -218,6 +222,10 @@ func (kb *KeyboardState) PressCurrent(inj *Injector) {
 	code := key.Code
 
 	var mods []int
+	if kb.AltGrActive {
+		mods = append(mods, KEY_RIGHTALT)
+		shiftOn = shiftOn && key.AltGrLabel == "" // AltGr symbols are typed without shift
+	}
 	if shiftOn && code != KEY_UP && code != KEY_DOWN && code != KEY_LEFT && code != KEY_RIGHT &&
 		code != KEY_ESC && code != KEY_DELETE {
 		mods = append(mods, KEY_LEFTSHIFT)
@@ -242,6 +250,7 @@ func (kb *KeyboardState) PressCurrent(inj *Injector) {
 	kb.CtrlActive = false
 	kb.AltActive = false
 	kb.MetaActive = false
+	kb.AltGrActive = false
 }
 
 // CheckAltTabTimeout auto-releases Alt if the cycling has been idle too long.
@@ -318,6 +327,8 @@ func (kb *KeyboardState) toggleModifier(key KeyDef) {
 		kb.ShiftActive = !kb.ShiftActive
 	case "caps":
 		kb.CapsActive = !kb.CapsActive
+	case "altgr":
+		kb.AltGrActive = !kb.AltGrActive
 	case "ctrl":
 		kb.CtrlActive = !kb.CtrlActive
 	case "alt":

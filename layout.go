@@ -106,6 +106,28 @@ type KeyDef struct {
 	Combo []int
 	// ShiftCode: if set and shift active, send this code instead of Code
 	ShiftCode int
+	// AltGrLabel: character typed with AltGr (RightAlt) held, e.g. "@" on German q
+	AltGrLabel string
+	// Action: built-in function ("paste", "cfg", "alttab"); empty = plain key.
+	// Lets translated layouts use their own labels.
+	Action string
+}
+
+// KeyAction returns the built-in function of a key; falls back to the
+// original English labels for layouts that do not set Action.
+func KeyAction(key KeyDef) string {
+	if key.Action != "" {
+		return key.Action
+	}
+	switch key.Label {
+	case "Paste":
+		return "paste"
+	case "Cfg":
+		return "cfg"
+	case "AltTab":
+		return "alttab"
+	}
+	return ""
 }
 
 func k(label string, code int, opts ...any) KeyDef {
