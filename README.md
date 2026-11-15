@@ -72,7 +72,9 @@ curl -fsSL https://raw.githubusercontent.com/TechnikWeber/gamepad-osk/main/insta
 The script
 
 * puts the binary into `~/.local/bin` (x86_64),
-* installs SDL3 and SDL3_ttf with your package manager if they are missing (asks first),
+* installs SDL3 and SDL3_ttf with your package manager if they are missing (asks first);
+  where SDL3 is not packaged (Ubuntu 24.04, Debian 12, Mint 22, Bazzite) or you say no,
+  it takes the build with SDL3 included – no root needed (`install.sh --portable` forces it),
 * adds a udev rule only if your system gives no access to `/dev/uinput` (asks first),
 * starts gamepad-osk hidden at every login (systemd user service),
 * adds **gamepad-osk Settings** to the start menu (right click: show/hide keyboard).
@@ -106,8 +108,9 @@ Everything else below follows from the dependencies and the protocols used.
 | System | Status |
 |---|---|
 | Fedora, Arch, Debian 13+, Ubuntu 25.04+, openSUSE Tumbleweed | SDL3 from the package manager, the installer offers it |
-| Bazzite, Bluefin, Fedora Atomic | the installer layers SDL3 with `rpm-ostree` (reboot once) |
-| Ubuntu 24.04, Debian 12, Linux Mint 22 | no SDL3 packages – needs a newer release |
+| Bazzite, Bluefin, Fedora Atomic | the installer uses the build with SDL3 included – no layering, no reboot |
+| Ubuntu 24.04, Debian 12, Linux Mint 22, Pop!_OS 24.04 | no SDL3 packages: the installer uses the build with SDL3 included (tested in containers: starts, renders) |
+| Ubuntu 22.04, Debian 11 and older | glibc too old (needs 2.36) |
 | KDE Plasma 6, Sway/wlroots, Hyprland, COSMIC | overlay via layer-shell: transparency, click-through |
 | GNOME (Wayland) | no layer-shell: shown as a normal window, no transparency or click-through |
 | X11 desktops | works; transparency via window opacity |

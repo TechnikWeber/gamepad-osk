@@ -5,10 +5,13 @@
 #
 # Installs for the current user only: binary to ~/.local/bin, autostart as a
 # systemd user service. Root (sudo) is asked for only if the system really
-# needs it: missing SDL3 libraries or missing access to /dev/uinput.
+# needs it: SDL3 from the package manager (optional, there is a build with
+# SDL3 included) or missing access to /dev/uinput.
 #
 #   install.sh              install or update
 #   install.sh --local F    install the binary F instead of downloading it
+#   install.sh --portable   use the build with SDL3 included (automatic if
+#                           the system has no SDL3 packages)
 #   install.sh --uninstall  remove binary, service and udev rule (keeps config)
 set -euo pipefail
 
@@ -23,6 +26,8 @@ UDEV_RULE="/etc/udev/rules.d/70-gamepad-osk.rules"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 ICON="$DATA_HOME/icons/hicolor/scalable/apps/gamepad-osk.svg"
 MENU="$DATA_HOME/applications/gamepad-osk-settings.desktop"
+LIB_DIR="$HOME/.local/lib/gamepad-osk" # SDL3 of the portable build
+PORTABLE=0
 
 say()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
@@ -32,7 +37,7 @@ die()  { printf '\033[1;31mError:\033[0m %s\n' "$*" >&2; exit 1; }
 ask() {
     local answer
     if [ -r /dev/tty ]; then
-        read -r -p "$1 [Y/n] " answer </dev/tty || answer=n
+        { read -r -p "$1 [Y/n] " answer </dev/tty; } 2>/dev/null || answer=n
     else
         return 1
     fi
@@ -49,6 +54,7 @@ uninstall() {
         systemctl --user disable --now gamepad-osk.service 2>/dev/null || true
     fi
     rm -f "$SVC" "$AUTOSTART" "$BIN" "$ICON" "$MENU"
+    rm -rf "$LIB_DIR"
     has_systemd_user && systemctl --user daemon-reload || true
     if [ -f "$UDEV_RULE" ]; then
         say "Removing udev rule (needs sudo)"
@@ -61,7 +67,8 @@ LOCAL_BIN=""
 case "${1:-}" in
     --uninstall) uninstall; exit 0 ;;
     --local) LOCAL_BIN="${2:?--local needs a file}" ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    --portable) PORTABLE=1 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     "") ;;
     *) die "unknown option $1 (try --help)" ;;
 esac
@@ -72,52 +79,62 @@ if [ -z "$LOCAL_BIN" ] && [ "$(uname -m)" != "x86_64" ]; then
 fi
 
 # --- 2. SDL3 libraries -------------------------------------------------------
+# Without SDL3 from the package manager the "portable" build is used: the
+# same program with SDL3 and SDL3_ttf bundled (no root needed). It covers
+# Ubuntu 24.04, Debian 12, Mint 22 and immutable systems like Bazzite.
 have_lib() { ldconfig -p 2>/dev/null | grep -q "$1" || ls /usr/lib*/"$1"* /usr/lib/*/"$1"* >/dev/null 2>&1; }
-if ! have_lib libSDL3.so.0 || ! have_lib libSDL3_ttf.so.0; then
-    warn "SDL3 and SDL3_ttf are missing."
+if [ "$PORTABLE" = 0 ] && [ -z "$LOCAL_BIN" ] && { ! have_lib libSDL3.so.0 || ! have_lib libSDL3_ttf.so.0; }; then
+    cmd=""
     if [ -e /run/ostree-booted ]; then
-        # Bazzite, Bluefin, Fedora Atomic: /usr is read-only, packages are layered
-        cmd="sudo rpm-ostree install --idempotent SDL3 SDL3_ttf"
-        if ask "Layer them now ($cmd, needs a reboot)?"; then
-            $cmd
-            say "Done. Reboot, then run this installer again."
-            exit 0
-        fi
-        die "please run: $cmd, reboot, then run this again."
-    fi
-    if   command -v dnf    >/dev/null; then cmd="sudo dnf install -y SDL3 SDL3_ttf"
+        PORTABLE=1 # Bazzite, Bluefin, Fedora Atomic: no layering and reboot needed
+    elif command -v dnf >/dev/null; then cmd="sudo dnf install -y SDL3 SDL3_ttf"
     elif command -v apt-get >/dev/null; then
-        if ! apt-cache show libsdl3-0 >/dev/null 2>&1; then
-            die "SDL3 is not packaged for this release (Ubuntu 24.04, Debian 12, Mint 22 ...). Needs Ubuntu 25.04+ or Debian 13+."
+        if apt-cache show libsdl3-0 >/dev/null 2>&1; then
+            cmd="sudo apt-get install -y libsdl3-0 libsdl3-ttf0"
+        else
+            PORTABLE=1 # Ubuntu 24.04, Debian 12, Mint 22: SDL3 not packaged
         fi
-        cmd="sudo apt-get install -y libsdl3-0 libsdl3-ttf0"
     elif command -v pacman >/dev/null; then cmd="sudo pacman -S --needed sdl3 sdl3_ttf"
     elif command -v zypper >/dev/null; then cmd="sudo zypper install -y libSDL3.so.0()(64bit) libSDL3_ttf.so.0()(64bit)"
-    else cmd=""; fi
-    if [ -n "$cmd" ] && ask "Install them now ($cmd)?"; then
-        $cmd
-    else
-        die "please install SDL3 and SDL3_ttf with your package manager, then run this again."
+    else PORTABLE=1; fi
+    if [ -n "$cmd" ]; then
+        warn "SDL3 and SDL3_ttf are missing."
+        if ask "Install them now ($cmd)? No = use the build with SDL3 included"; then
+            $cmd
+        else
+            PORTABLE=1
+        fi
     fi
 fi
+[ "$PORTABLE" = 1 ] && say "Using the build with SDL3 included (no system SDL3 needed)"
 
 # --- 3. Binary ---------------------------------------------------------------
 mkdir -p "$BIN_DIR"
-tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
 if [ -n "$LOCAL_BIN" ]; then
     say "Installing $LOCAL_BIN"
-    cp "$LOCAL_BIN" "$tmp"
+    cp "$LOCAL_BIN" "$work/gamepad-osk"
+elif [ "$PORTABLE" = 1 ]; then
+    say "Downloading the latest release (with SDL3)"
+    curl -fL --progress-bar "${GAMEPAD_OSK_PORTABLE_URL:-https://github.com/$REPO/releases/latest/download/gamepad-osk-portable-x86_64.tar.gz}" \
+        | tar -xz -C "$work" --strip-components=1 || die "download failed"
 else
     say "Downloading the latest release"
-    curl -fL --progress-bar -o "$tmp" "https://github.com/$REPO/releases/latest/download/gamepad-osk" \
+    curl -fL --progress-bar -o "$work/gamepad-osk" "https://github.com/$REPO/releases/latest/download/gamepad-osk" \
         || die "download failed"
 fi
-chmod 755 "$tmp"
-"$tmp" --version >/dev/null 2>&1 || die "the binary does not start here (missing libraries?). Try: ldd $tmp"
+chmod 755 "$work/gamepad-osk"
+"$work/gamepad-osk" --version >/dev/null 2>&1 \
+    || die "the binary does not start here (missing libraries?). Try: ldd $work/gamepad-osk"
 if has_systemd_user; then systemctl --user stop gamepad-osk.service 2>/dev/null || true; fi
-mv -f "$tmp" "$BIN"
-trap - EXIT
+rm -rf "$LIB_DIR"
+if [ "$PORTABLE" = 1 ]; then
+    # The binary looks for its libraries in ../lib/gamepad-osk (RPATH)
+    mkdir -p "$LIB_DIR"
+    cp "$work"/lib/*.so.* "$LIB_DIR/"
+fi
+mv -f "$work/gamepad-osk" "$BIN"
 say "Installed $("$BIN" --version) to $BIN"
 
 # --- 4. Permissions: /dev/uinput (typing) and the controller -----------------
