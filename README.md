@@ -98,6 +98,21 @@ go build -o gamepad-osk .
 ```
 </details>
 
+## Compatibility
+
+Tested on Fedora 45, KDE Plasma 6 (Wayland) with an 8BitDo Ultimate 2C.
+Everything else below follows from the dependencies and the protocols used.
+
+| System | Status |
+|---|---|
+| Fedora, Arch, Debian 13+, Ubuntu 25.04+, openSUSE Tumbleweed | SDL3 from the package manager, the installer offers it |
+| Bazzite, Bluefin, Fedora Atomic | the installer layers SDL3 with `rpm-ostree` (reboot once) |
+| Ubuntu 24.04, Debian 12, Linux Mint 22 | no SDL3 packages – needs a newer release |
+| KDE Plasma 6, Sway/wlroots, Hyprland, COSMIC | overlay via layer-shell: transparency, click-through |
+| GNOME (Wayland) | no layer-shell: shown as a normal window, no transparency or click-through |
+| X11 desktops | works; transparency via window opacity |
+| Steam running | Steam Input may turn the pad into a desktop mouse itself: switch off its desktop layout or Steam Input for this controller |
+
 ## Controls
 
 The legend under the keys always shows the current mapping. Defaults, with

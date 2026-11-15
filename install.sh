@@ -74,12 +74,26 @@ fi
 # --- 2. SDL3 libraries -------------------------------------------------------
 have_lib() { ldconfig -p 2>/dev/null | grep -q "$1" || ls /usr/lib*/"$1"* /usr/lib/*/"$1"* >/dev/null 2>&1; }
 if ! have_lib libSDL3.so.0 || ! have_lib libSDL3_ttf.so.0; then
-    if   command -v dnf    >/dev/null; then cmd="sudo dnf install -y SDL3 SDL3_ttf"
-    elif command -v apt-get >/dev/null; then cmd="sudo apt-get install -y libsdl3-0 libsdl3-ttf-0"
-    elif command -v pacman >/dev/null; then cmd="sudo pacman -S --needed sdl3 sdl3_ttf"
-    elif command -v zypper >/dev/null; then cmd="sudo zypper install -y libSDL3-0 libSDL3_ttf0"
-    else cmd=""; fi
     warn "SDL3 and SDL3_ttf are missing."
+    if [ -e /run/ostree-booted ]; then
+        # Bazzite, Bluefin, Fedora Atomic: /usr is read-only, packages are layered
+        cmd="sudo rpm-ostree install --idempotent SDL3 SDL3_ttf"
+        if ask "Layer them now ($cmd, needs a reboot)?"; then
+            $cmd
+            say "Done. Reboot, then run this installer again."
+            exit 0
+        fi
+        die "please run: $cmd, reboot, then run this again."
+    fi
+    if   command -v dnf    >/dev/null; then cmd="sudo dnf install -y SDL3 SDL3_ttf"
+    elif command -v apt-get >/dev/null; then
+        if ! apt-cache show libsdl3-0 >/dev/null 2>&1; then
+            die "SDL3 is not packaged for this release (Ubuntu 24.04, Debian 12, Mint 22 ...). Needs Ubuntu 25.04+ or Debian 13+."
+        fi
+        cmd="sudo apt-get install -y libsdl3-0 libsdl3-ttf0"
+    elif command -v pacman >/dev/null; then cmd="sudo pacman -S --needed sdl3 sdl3_ttf"
+    elif command -v zypper >/dev/null; then cmd="sudo zypper install -y libSDL3.so.0()(64bit) libSDL3_ttf.so.0()(64bit)"
+    else cmd=""; fi
     if [ -n "$cmd" ] && ask "Install them now ($cmd)?"; then
         $cmd
     else
