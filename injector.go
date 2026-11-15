@@ -28,6 +28,8 @@ int create_uinput_device() {
     // Mouse axes
     ioctl(fd, UI_SET_RELBIT, REL_X);
     ioctl(fd, UI_SET_RELBIT, REL_Y);
+    ioctl(fd, UI_SET_RELBIT, REL_WHEEL);  // mouse mode: scroll with the other stick
+    ioctl(fd, UI_SET_RELBIT, REL_HWHEEL);
 
     struct uinput_setup usetup;
     memset(&usetup, 0, sizeof(usetup));
@@ -192,6 +194,19 @@ func (inj *Injector) MoveMouse(dx, dy int) {
 	}
 	if dy != 0 {
 		inj.writeEvent(evRel, relY, int32(dy))
+	}
+	if dx != 0 || dy != 0 {
+		inj.syn()
+	}
+}
+
+// Scroll sends wheel steps: dy > 0 scrolls down, dx > 0 scrolls right.
+func (inj *Injector) Scroll(dx, dy int) {
+	if dy != 0 {
+		inj.writeEvent(evRel, 0x08, int32(-dy)) // REL_WHEEL: positive = up
+	}
+	if dx != 0 {
+		inj.writeEvent(evRel, 0x06, int32(dx)) // REL_HWHEEL: positive = right
 	}
 	if dx != 0 || dy != 0 {
 		inj.syn()

@@ -32,6 +32,9 @@ static SDL_Window* create_window_props(const char *title, int x, int y, int w, i
     if (wayland_role_custom) {
         SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_WAYLAND_SURFACE_ROLE_CUSTOM_BOOLEAN, true);
         SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN, true);
+        // Alpha channel: lets the keyboard be see-through (window opacity
+        // has no effect on Wayland layer surfaces) and the mouse badge round.
+        SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_TRANSPARENT_BOOLEAN, true);
     }
 
     SDL_Window *win = SDL_CreateWindowWithProperties(props);

@@ -33,6 +33,7 @@ type settingsRow struct {
 	set            func(int)
 	min, max, step int
 	suffix         string
+	skip           func() bool // choice: value not allowed, cycling steps over it
 }
 
 var settingsTexts = map[string]map[string]string{
@@ -49,8 +50,15 @@ var settingsTexts = map[string]map[string]string{
 		"light": "Hell", "night": "Dunkel", "matrix": "Matrix (Original)",
 		"saved": "Gespeichert.", "restarted": "Gespeichert, Tastatur neu gestartet.",
 		"unsaved": "Nicht gespeichert – nochmal zum Verwerfen.", "error": "Fehler: ",
-		"hint":    "%s wählen · %s ändern · %s umschalten · %s speichern · %s schließen",
 		"preview": "Vorschau",
+		"select": "wählen", "change_v": "ändern", "toggle_v": "umschalten", "page_v": "Seite",
+		"save_v": "speichern", "close_v": "schließen",
+		"page_general": "Allgemein", "page_buttons": "Belegung",
+		"mouse_combo": "Nur Maus mit", "opacity": "Transparenz",
+		"b_press": "Taste tippen", "b_backspace": "Löschen", "b_space": "Leerzeichen",
+		"b_enter": "Enter", "b_shift": "Großschreiben (halten)", "b_close": "Ausblenden",
+		"b_left_click": "Linksklick", "b_right_click": "Rechtsklick", "b_position": "Oben/Unten wechseln",
+		"swapped": "Getauscht mit „%s“.",
 	},
 	"en": {
 		"title": "gamepad-osk – Settings", "controller": "Controller", "none": "no controller found",
@@ -65,8 +73,15 @@ var settingsTexts = map[string]map[string]string{
 		"light": "Light", "night": "Dark", "matrix": "Matrix (original)",
 		"saved": "Saved.", "restarted": "Saved, keyboard restarted.",
 		"unsaved": "Not saved – press again to discard.", "error": "Error: ",
-		"hint":    "%s select · %s change · %s toggle · %s save · %s close",
 		"preview": "Preview",
+		"select": "select", "change_v": "change", "toggle_v": "toggle", "page_v": "page",
+		"save_v": "save", "close_v": "close",
+		"page_general": "General", "page_buttons": "Buttons",
+		"mouse_combo": "Mouse only with", "opacity": "Transparency",
+		"b_press": "Type key", "b_backspace": "Delete", "b_space": "Space",
+		"b_enter": "Enter", "b_shift": "Shift (hold)", "b_close": "Hide",
+		"b_left_click": "Left click", "b_right_click": "Right click", "b_position": "Top/bottom",
+		"swapped": "Swapped with “%s”.",
 	},
 }
 
@@ -91,7 +106,10 @@ type settingsUI struct {
 	cfg, orig                Config
 	autostart, origAutostart bool
 	tx                       map[string]string
-	rows                     []settingsRow
+	rows                     []settingsRow // rows of the current page
+	pages                    [2][]settingsRow
+	page                     int
+	tabRects                 [2]FRect
 	focus                    int // rows, then save button, then close button
 
 	gamepad      *GamepadReader
@@ -155,10 +173,97 @@ func (s *settingsUI) comboLabel(combo string) string {
 	return strings.Join(parts, " + ")
 }
 
+// physical returns the button position a config name ends up on (swap_ab).
+func (s *settingsUI) physical(button string) string {
+	if s.cfg.Gamepad.SwapAB {
+		switch button {
+		case "a":
+			return "b"
+		case "b":
+			return "a"
+		}
+	}
+	return button
+}
+
+// mappingButtons are the buttons a function can be put on ("" = off).
+var mappingButtons = []string{"a", "b", "x", "y", "lb", "rb", "lt", "rt", "start", "select", ""}
+
+type mappingDef struct {
+	key      string
+	field    func(*ButtonsConfig) *string
+	noAxis   bool // triggers (lt/rt) not supported for this function
+	required bool // cannot be switched off
+}
+
+var mappingDefs = []mappingDef{
+	{"b_press", func(b *ButtonsConfig) *string { return &b.Press }, true, true},
+	{"b_backspace", func(b *ButtonsConfig) *string { return &b.Backspace }, false, false},
+	{"b_space", func(b *ButtonsConfig) *string { return &b.Space }, false, false},
+	{"b_enter", func(b *ButtonsConfig) *string { return &b.Enter }, false, false},
+	{"b_shift", func(b *ButtonsConfig) *string { return &b.Shift }, false, false},
+	{"b_close", func(b *ButtonsConfig) *string { return &b.Close }, false, false},
+	{"b_left_click", func(b *ButtonsConfig) *string { return &b.LeftClick }, true, false},
+	{"b_right_click", func(b *ButtonsConfig) *string { return &b.RightClick }, true, false},
+	{"b_position", func(b *ButtonsConfig) *string { return &b.PositionToggle }, false, false},
+}
+
+// mappingRow builds a settings row that puts one function on a button.
+// A button already used by another function is swapped with it.
+func (s *settingsUI) mappingRow(def mappingDef) settingsRow {
+	var choices []string
+	for _, b := range mappingButtons {
+		if (def.noAxis && (b == "lt" || b == "rt")) || (def.required && b == "") {
+			continue
+		}
+		choices = append(choices, b)
+	}
+	return settingsRow{label: s.t(def.key), kind: rowChoice,
+		options: func() []string {
+			p := s.effectiveProfile()
+			out := make([]string, len(choices))
+			for i, b := range choices {
+				if b == "" {
+					out[i] = s.t("off")
+				} else {
+					out[i] = p.Label(s.physical(b))
+				}
+			}
+			return out
+		},
+		get: func() int { return indexOf(choices, *def.field(&s.cfg.Gamepad.Buttons)) },
+		set: func(v int) {
+			bc := &s.cfg.Gamepad.Buttons
+			old, nb := *def.field(bc), choices[v]
+			if nb != "" {
+				for _, other := range mappingDefs {
+					if other.key == def.key || *other.field(bc) != nb {
+						continue
+					}
+					// The other function takes this one's old button, if it can
+					if old == "" && other.required ||
+						other.noAxis && (old == "lt" || old == "rt") {
+						continue
+					}
+					*other.field(bc) = old
+					s.setStatus(fmt.Sprintf(s.t("swapped"), s.t(other.key)))
+				}
+			}
+			*def.field(bc) = nb
+		}}
+}
+
 func (s *settingsUI) buildRows() {
 	themes := settingsThemeOrder()
 	layouts := []string{"auto", "de", "us"}
-	s.rows = []settingsRow{
+	comboOptions := func() []string {
+		out := make([]string, len(comboChoices))
+		for i, c := range comboChoices {
+			out[i] = s.comboLabel(c)
+		}
+		return out
+	}
+	general := []settingsRow{
 		{label: s.t("autostart"), kind: rowToggle,
 			get: func() int { return b2i(s.autostart) }, set: func(v int) { s.autostart = v == 1 }},
 		{label: s.t("theme"), kind: rowChoice,
@@ -191,18 +296,18 @@ func (s *settingsUI) buildRows() {
 			},
 			get: func() int { return indexOf(profileChoices, s.cfg.Gamepad.Controller) },
 			set: func(v int) { s.cfg.Gamepad.Controller = profileChoices[v] }},
-		{label: s.t("swap_ab"), kind: rowToggle,
-			get: func() int { return b2i(s.cfg.Gamepad.SwapAB) }, set: func(v int) { s.cfg.Gamepad.SwapAB = v == 1 }},
-		{label: s.t("combo"), kind: rowChoice,
-			options: func() []string {
-				out := make([]string, len(comboChoices))
-				for i, c := range comboChoices {
-					out[i] = s.comboLabel(c)
-				}
-				return out
-			},
+		{label: s.t("combo"), kind: rowChoice, options: comboOptions,
 			get: func() int { return indexOf(comboChoices, s.cfg.Gamepad.ToggleCombo) },
-			set: func(v int) { s.cfg.Gamepad.ToggleCombo = comboChoices[v] }},
+			set: func(v int) { s.cfg.Gamepad.ToggleCombo = comboChoices[v] },
+			skip: func() bool {
+				return s.cfg.Gamepad.ToggleCombo != "" && s.cfg.Gamepad.ToggleCombo == s.cfg.Gamepad.MouseCombo
+			}},
+		{label: s.t("mouse_combo"), kind: rowChoice, options: comboOptions,
+			get: func() int { return indexOf(comboChoices, s.cfg.Gamepad.MouseCombo) },
+			set: func(v int) { s.cfg.Gamepad.MouseCombo = comboChoices[v] },
+			skip: func() bool {
+				return s.cfg.Gamepad.MouseCombo != "" && s.cfg.Gamepad.ToggleCombo == s.cfg.Gamepad.MouseCombo
+			}},
 		{label: s.t("mouse"), kind: rowChoice,
 			options: func() []string { return []string{s.t("rstick"), s.t("lstick"), s.t("off")} },
 			get: func() int {
@@ -224,6 +329,9 @@ func (s *settingsUI) buildRows() {
 			}},
 		{label: s.t("speed"), kind: rowSlider, min: 1, max: 50, step: 1,
 			get: func() int { return s.cfg.Mouse.Sensitivity }, set: func(v int) { s.cfg.Mouse.Sensitivity = v }},
+		{label: s.t("opacity"), kind: rowSlider, min: 0, max: 80, step: 5, suffix: " %",
+			get: func() int { return int(100 - s.cfg.Window.Opacity*100 + 0.5) },
+			set: func(v int) { s.cfg.Window.Opacity = float64(100-v) / 100 }},
 		{label: s.t("legend"), kind: rowToggle,
 			get: func() int { return b2i(s.cfg.Window.Legend) }, set: func(v int) { s.cfg.Window.Legend = v == 1 }},
 		{label: s.t("position"), kind: rowChoice,
@@ -233,6 +341,26 @@ func (s *settingsUI) buildRows() {
 		{label: s.t("size"), kind: rowSlider, min: 30, max: 100, step: 5, suffix: " %",
 			get: func() int { return s.cfg.Keys.Scale }, set: func(v int) { s.cfg.Keys.Scale = v }},
 	}
+	buttons := []settingsRow{
+		{label: s.t("swap_ab"), kind: rowToggle,
+			get: func() int { return b2i(s.cfg.Gamepad.SwapAB) }, set: func(v int) { s.cfg.Gamepad.SwapAB = v == 1 }},
+	}
+	for _, def := range mappingDefs {
+		buttons = append(buttons, s.mappingRow(def))
+	}
+	s.pages = [2][]settingsRow{general, buttons}
+	s.rows = s.pages[s.page]
+}
+
+// setPage switches between "General" and "Buttons".
+func (s *settingsUI) setPage(p int) {
+	p = (p%2 + 2) % 2
+	if p == s.page {
+		return
+	}
+	s.page = p
+	s.rows = s.pages[p]
+	s.focus = 0
 }
 
 func (s *settingsUI) detectedOr() string {
@@ -260,7 +388,14 @@ func (s *settingsUI) change(i, dir int) {
 		r.set(1 - r.get())
 	case rowChoice:
 		n := len(r.options())
-		r.set(((r.get()+dir)%n + n) % n)
+		v := r.get()
+		for tries := 0; tries < n; tries++ {
+			v = ((v+dir)%n + n) % n
+			r.set(v)
+			if r.skip == nil || !r.skip() {
+				break
+			}
+		}
 	case rowSlider:
 		v := r.get() + dir*r.step
 		r.set(min(r.max, max(r.min, v)))
@@ -385,10 +520,15 @@ var (
 
 func (s *settingsUI) rowsPerColumn() int { return (len(s.rows) + 1) / 2 }
 
+// maxRowsPerColumn sizes the window for the longest page.
+func (s *settingsUI) maxRowsPerColumn() int {
+	return (max(len(s.pages[0]), len(s.pages[1])) + 1) / 2
+}
+
 // layoutWindow computes window size and the preview area for a screen height.
 func (s *settingsUI) layoutWindow(screenH int32) {
 	s.winW = 900
-	rowsH := int32(s.rowsPerColumn()) * setRowH //nolint:gosec // G115: small count
+	rowsH := int32(s.maxRowsPerColumn()) * setRowH //nolint:gosec // G115: small count
 	fixed := int32(setHeaderH + setMargin + rowsH + setMargin + setButtonsH + setHintH)
 	previewW := s.winW - 2*setMargin
 	previewH := previewW * 52 / 100 // keyboard + legend aspect
@@ -461,6 +601,21 @@ func (s *settingsUI) draw() {
 	}
 	r.renderText(s.uiFonts.Small, sub, setSubtle, FRect{X: setMargin, Y: 34, W: float32(s.winW), H: 22}, AlignLeft)
 
+	// Page tabs (segmented control, top right)
+	segW, segH := float32(150), float32(34)
+	seg := FRect{X: float32(s.winW-setMargin) - 2*segW, Y: 14, W: 2 * segW, H: segH}
+	r.fillRoundRect(seg, 9, c(224, 224, 229))
+	for i, key := range []string{"page_general", "page_buttons"} {
+		tr := FRect{X: seg.X + float32(i)*segW, Y: seg.Y, W: segW, H: segH}
+		s.tabRects[i] = tr
+		col := setSubtle
+		if i == s.page {
+			r.fillRoundRect(FRect{X: tr.X + 2, Y: tr.Y + 2, W: tr.W - 4, H: tr.H - 4}, 7, setPanel)
+			col = setText
+		}
+		r.renderText(s.uiFonts.Small, s.t(key), col, tr, AlignCenter)
+	}
+
 	// Preview, centred in its area
 	if s.preview != nil {
 		area := s.previewRect
@@ -494,7 +649,7 @@ func (s *settingsUI) draw() {
 	}
 
 	// Buttons (right aligned) and status (left)
-	by := float32(top + int32(per)*setRowH + 14) //nolint:gosec // G115: small count
+	by := float32(top + int32(s.maxRowsPerColumn())*setRowH + 14) //nolint:gosec // G115: small count
 	bw, bh := float32(150), float32(40)
 	s.btnRects[0] = FRect{X: float32(s.winW-setMargin) - bw, Y: by, W: bw, H: bh}        // save
 	s.btnRects[1] = FRect{X: float32(s.winW-setMargin) - 2*bw - 12, Y: by, W: bw, H: bh} // close
@@ -505,12 +660,26 @@ func (s *settingsUI) draw() {
 	}
 
 	// Controller hint
+	// (follows the saved mapping, which is what this window listens to)
 	p := GetControllerProfile(s.detectedOr())
-	pressBtn, closeBtn := "a", "b"
-	if s.orig.Gamepad.SwapAB {
-		pressBtn, closeBtn = "b", "a"
+	ob := s.orig.Gamepad.Buttons
+	label := func(b string) string {
+		if s.orig.Gamepad.SwapAB && (b == "a" || b == "b") {
+			b = map[string]string{"a": "b", "b": "a"}[b]
+		}
+		return p.Label(b)
 	}
-	hint := fmt.Sprintf(s.t("hint"), "✚ ↑↓", "✚ ←→", p.Label(pressBtn), p.Label("start"), p.Label(closeBtn))
+	parts := []string{"✚ ↑↓ " + s.t("select"), "✚ ←→ " + s.t("change_v"), label(ob.Press) + " " + s.t("toggle_v")}
+	if ob.RightClick != "" && ob.LeftClick != "" {
+		parts = append(parts, label(ob.RightClick)+"/"+label(ob.LeftClick)+" "+s.t("page_v"))
+	}
+	if ob.PositionToggle != "" {
+		parts = append(parts, label(ob.PositionToggle)+" "+s.t("save_v"))
+	}
+	if ob.Close != "" {
+		parts = append(parts, label(ob.Close)+" "+s.t("close_v"))
+	}
+	hint := strings.Join(parts, " · ")
 	r.renderText(s.uiFonts.Small, hint, setSubtle,
 		FRect{X: 0, Y: by + bh + 10, W: float32(s.winW), H: setHintH}, AlignCenter)
 
@@ -607,6 +776,12 @@ func (s *settingsUI) handleUI(e UIEvent) {
 			}
 		}
 	case SDL_EVENT_MOUSE_BUTTON_DOWN:
+		for i, tr := range s.tabRects {
+			if inRect(e.X, e.Y, tr) {
+				s.setPage(i)
+				return
+			}
+		}
 		for i, rr := range s.rowRects {
 			if !inRect(e.X, e.Y, rr) {
 				continue
@@ -669,6 +844,10 @@ func (s *settingsUI) handleUI(e UIEvent) {
 			s.activate()
 		case SDLK_ESCAPE:
 			s.requestClose()
+		case SDLK_PAGEUP:
+			s.setPage(s.page - 1)
+		case SDLK_PAGEDOWN:
+			s.setPage(s.page + 1)
 		case SDLK_S:
 			if e.Ctrl {
 				s.save()
@@ -701,6 +880,10 @@ func (s *settingsUI) handleGamepad(a Action) {
 		s.requestClose()
 	case ActionPositionToggle:
 		s.save()
+	case ActionRightClick: // LB by default
+		s.setPage(s.page - 1)
+	case ActionLeftClick: // RB by default
+		s.setPage(s.page + 1)
 	}
 }
 
@@ -717,6 +900,9 @@ func RunSettings(cfg Config) error {
 	s.tx = settingsTexts[UILanguage(detected)]
 	s.reopenGamepad()
 	s.buildRows()
+	if os.Getenv("GAMEPAD_OSK_SETTINGS_PAGE") == "buttons" { // docs screenshots
+		s.setPage(1)
+	}
 
 	if os.Getenv("WAYLAND_DISPLAY") != "" && os.Getenv("SDL_VIDEODRIVER") == "" {
 		_ = os.Setenv("SDL_VIDEODRIVER", "wayland")

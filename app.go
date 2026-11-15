@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+type uiMode int
+
+const (
+	modeHidden uiMode = iota
+	modeKeyboard
+	modeMouse
+)
+
 var themeOrder []string
 var isWayland bool
 
@@ -26,6 +34,8 @@ type App struct {
 	visible       bool
 	daemon        bool
 	togglePending bool
+	mouseMode     bool // mouse only: keyboard hidden, small badge shown
+	mousePending  bool
 	lock          sync.Mutex
 	themeIdx int
 	posTop   bool // true = keyboard at top of screen
@@ -239,8 +249,10 @@ func (app *App) Run() error {
 	SDL3SetRenderDrawBlendMode(renderer, 1) // SDL_BLENDMODE_BLEND
 	Debugf("Renderer: %s", SDL3GetRendererName(renderer))
 
-	// Set opacity after renderer creation (SDL3 requires renderer to exist first)
-	if cfg.Window.Opacity < 1.0 {
+	// Opacity: X11 uses window opacity (set after renderer creation, SDL3
+	// requires that); Wayland layer surfaces ignore it, so the renderer
+	// draws see-through itself (rend.Opacity below).
+	if cfg.Window.Opacity < 1.0 && !isWayland {
 		SDL3SetWindowOpacity(window, float32(cfg.Window.Opacity))
 	}
 
@@ -252,6 +264,9 @@ func (app *App) Run() error {
 
 	rend := NewRenderer(renderer, theme, unit, pad, fonts, legendLines, legendM)
 	defer rend.Destroy()
+	if isWayland {
+		rend.Opacity = float32(cfg.Window.Opacity)
+	}
 
 	inj, err := NewInjector()
 	if err != nil {
@@ -279,6 +294,10 @@ func (app *App) Run() error {
 		case "toggle":
 			app.lock.Lock()
 			app.togglePending = true
+			app.lock.Unlock()
+		case "mouse":
+			app.lock.Lock()
+			app.mousePending = true
 			app.lock.Unlock()
 		case "ping":
 			// Instance check - connection success is the answer
@@ -337,6 +356,9 @@ func (app *App) Run() error {
 	app.running = true
 
 	opacity := float32(cfg.Window.Opacity)
+	if isWayland {
+		opacity = 1 // drawn by the renderer instead
+	}
 
 	// Show window after everything is initialized (avoids ghost frame)
 	if app.visible {
@@ -352,71 +374,124 @@ func (app *App) Run() error {
 		// Wayland: first frame renders after configure arrives via SDL event pump
 	}
 
-	for app.running {
-		// Handle toggle
-		app.lock.Lock()
-		if app.togglePending {
-			app.togglePending = false
-			app.visible = !app.visible
-			if app.visible {
-				if cfg.Gamepad.Grab {
-					app.grabPending = true
-					app.grabPendingUntil = time.Now().Add(500 * time.Millisecond)
-				}
-				if !hasLayerShell() {
-					SaveFocusedWindow() // capture game window now, used by RestoreFocus on hide
-				}
-				if isWayland {
-					attachLayerShellAsync(window, width, height, app.posTop, margin, cfg.Window.PanelAvoid)
-				} else {
-					SDL3ShowWindow(window)
-				}
-				rend.MarkDirty()
-				if opacity < 1.0 {
-					SDL3SetWindowOpacity(window, opacity) // re-apply after show
-				}
-				if !isWayland {
-					app.winY = app.computeY()
-					SDL3SetWindowPosition(window, app.winX, app.winY)
-					SetNoFocusHints(window)
-					// No RestoreFocus: XMapRaised does not steal focus; calling XSetInputFocus here
-					// changes _NET_ACTIVE_WINDOW to prev_focused (terminal), triggering xfce4-panel.
-				}
+	// Window size currently set (keyboard or mouse badge)
+	curW, curH := width, height
+	var badgeItems []LegendItem
+
+	// hideSurface hides the keyboard or the mouse badge and gives the
+	// controller back: modifiers and mouse buttons released, grab dropped.
+	hideSurface := func() {
+		app.stopRepeat()
+		kb.CapsActive = false
+		kb.ShiftActive = false
+		kb.ShiftHeld = false
+		kb.CtrlActive = false
+		kb.AltActive = false
+		kb.MetaActive = false
+		kb.AltGrActive = false
+		kb.ReleaseAltTab(inj)
+		if inj != nil {
+			inj.ReleaseKey(KEY_LEFTSHIFT)
+			inj.ReleaseKey(KEY_LEFTCTRL)
+			inj.ReleaseKey(KEY_LEFTALT)
+			inj.ReleaseKey(KEY_LEFTMETA)
+			inj.ClickMouse(0x110, false) // BTN_LEFT release
+			inj.ClickMouse(0x111, false) // BTN_RIGHT release
+		}
+		// Cancel any pending grab so it can't fire after hide.
+		app.grabPending = false
+		gamepad.Ungrab()
+		gamepad.ForceMouse = false
+		if isWayland {
+			destroyLayerSurface()
+		} else {
+			SDL3HideWindow(window)
+			if IsSavedWindowFullscreen() {
+				WarpPointerIfOutside()
+			}
+			RestoreFocus()
+		}
+	}
+
+	// showSurface shows the window at size w x h (keyboard or badge).
+	showSurface := func(w, h int32, top bool) {
+		if cfg.Gamepad.Grab {
+			app.grabPending = true
+			app.grabPendingUntil = time.Now().Add(500 * time.Millisecond)
+		}
+		if !hasLayerShell() {
+			SaveFocusedWindow() // capture game window now, used by RestoreFocus on hide
+		}
+		if w != curW || h != curH {
+			SDL3SetWindowSize(window, w, h)
+			curW, curH = w, h
+		}
+		if isWayland {
+			attachLayerShellAsync(window, w, h, top, margin, cfg.Window.PanelAvoid)
+		} else {
+			SDL3ShowWindow(window)
+		}
+		rend.MarkDirty()
+		if opacity < 1.0 {
+			SDL3SetWindowOpacity(window, opacity) // re-apply after show
+		}
+		if !isWayland {
+			if h == height {
+				app.winY = app.computeY()
+				SDL3SetWindowPosition(window, app.winX, app.winY)
 			} else {
-				app.stopRepeat()
-				kb.CapsActive = false
-				kb.ShiftActive = false
-				kb.ShiftHeld = false
-				kb.CtrlActive = false
-				kb.AltActive = false
-				kb.MetaActive = false
-				kb.AltGrActive = false
-				kb.ReleaseAltTab(inj)
-				if inj != nil {
-					inj.ReleaseKey(KEY_LEFTSHIFT)
-					inj.ReleaseKey(KEY_LEFTCTRL)
-					inj.ReleaseKey(KEY_LEFTALT)
-					inj.ReleaseKey(KEY_LEFTMETA)
-					inj.ClickMouse(0x110, false) // BTN_LEFT release
-					inj.ClickMouse(0x111, false) // BTN_RIGHT release
+				area := app.posArea
+				SDL3SetWindowPosition(window, area.X+(area.W-w)/2, area.Y+area.H-h-margin-8)
+			}
+			SetNoFocusHints(window)
+			// No RestoreFocus: XMapRaised does not steal focus; calling XSetInputFocus here
+			// changes _NET_ACTIVE_WINDOW to prev_focused (terminal), triggering xfce4-panel.
+		}
+	}
+
+	for app.running {
+		// Handle show/hide and mouse mode requests
+		app.lock.Lock()
+		toggle, mouse := app.togglePending, app.mousePending
+		app.togglePending, app.mousePending = false, false
+		app.lock.Unlock()
+		if toggle || mouse {
+			from := modeHidden
+			if app.visible {
+				from = modeKeyboard
+			} else if app.mouseMode {
+				from = modeMouse
+			}
+			to := modeKeyboard
+			if toggle && from == modeKeyboard {
+				to = modeHidden
+			}
+			if mouse {
+				to = modeMouse
+				if from == modeMouse {
+					to = modeHidden
 				}
-				// Cancel any pending grab so it can't fire after hide.
-				app.grabPending = false
-				gamepad.Ungrab()
-				if isWayland {
-					destroyLayerSurface()
-				} else {
-					SDL3HideWindow(window)
+			}
+			if to != from {
+				if from != modeHidden {
+					hideSurface()
 				}
-				if !isWayland {
-					if IsSavedWindowFullscreen() {
-						WarpPointerIfOutside()
+				app.visible = to == modeKeyboard
+				app.mouseMode = to == modeMouse
+				switch to {
+				case modeKeyboard:
+					showSurface(width, height, app.posTop)
+				case modeMouse:
+					badgeItems = BuildMouseLegend(gamepad.config, gamepad.Profile(), lang)
+					if !cfg.Window.Legend {
+						badgeItems = nil
 					}
-					RestoreFocus()
+					gamepad.ForceMouse = true
+					bw, bh := rend.MouseBadgeSize(badgeItems)
+					showSurface(bw, bh, false)
 				}
 			}
 		}
-		app.lock.Unlock()
 
 		// Process SDL3 window events
 		for evType, ok := SDL3PollEvent(); ok; evType, ok = SDL3PollEvent() {
@@ -503,6 +578,8 @@ func (app *App) Run() error {
 		// Render
 		if app.visible {
 			rend.Draw(kb)
+		} else if app.mouseMode {
+			rend.DrawMouseBadge(badgeItems)
 		}
 
 		// Frame pacing: vsync in rend.Draw handles active rendering.
@@ -538,6 +615,17 @@ func (app *App) handleAction(a Action, kb *KeyboardState, inj *Injector, rend *R
 		app.lock.Lock()
 		app.togglePending = true
 		app.lock.Unlock()
+		return
+	}
+
+	if a.Type == ActionMouseMode {
+		app.lock.Lock()
+		app.mousePending = true
+		app.lock.Unlock()
+		return
+	}
+	if app.mouseMode {
+		app.handleMouseAction(a, inj)
 		return
 	}
 
@@ -655,6 +743,50 @@ func (app *App) handleAction(a Action, kb *KeyboardState, inj *Injector, rend *R
 		app.stopRepeat()
 		app.running = false
 		return
+	}
+}
+
+// handleMouseAction handles the controller in mouse mode: cursor, clicks,
+// scrolling with the other stick, arrow keys on the d-pad. Close ends it.
+func (app *App) handleMouseAction(a Action, inj *Injector) {
+	if inj == nil {
+		if a.Type == ActionClose {
+			app.lock.Lock()
+			app.mousePending = true
+			app.lock.Unlock()
+		}
+		return
+	}
+	switch a.Type { //nolint:exhaustive // everything else does nothing in mouse mode
+	case ActionMouseMove:
+		inj.MoveMouse(a.DX, a.DY)
+	case ActionPressStart, ActionLeftClick:
+		inj.ClickMouse(0x110, true)
+	case ActionPress, ActionLeftClickRelease:
+		inj.ClickMouse(0x110, false)
+	case ActionRightClick:
+		inj.ClickMouse(0x111, true)
+	case ActionRightClickRelease:
+		inj.ClickMouse(0x111, false)
+	case ActionNavigate:
+		if !a.Dpad {
+			inj.Scroll(a.DX, a.DY)
+			return
+		}
+		switch {
+		case a.DY < 0:
+			inj.PressKey(KEY_UP, nil)
+		case a.DY > 0:
+			inj.PressKey(KEY_DOWN, nil)
+		case a.DX < 0:
+			inj.PressKey(KEY_LEFT, nil)
+		case a.DX > 0:
+			inj.PressKey(KEY_RIGHT, nil)
+		}
+	case ActionClose:
+		app.lock.Lock()
+		app.mousePending = true
+		app.lock.Unlock()
 	}
 }
 

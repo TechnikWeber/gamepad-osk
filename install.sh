@@ -214,6 +214,7 @@ cat <<EOF
 
   Done. Show/hide the keyboard with  Guide + Select  on your controller
   (Xbox button + View, PS button + Create, Home + Minus).
+  Mouse only (keyboard hidden): Guide + Start (Home + Plus).
   Settings: start menu "gamepad-osk Settings" (or: gamepad-osk --settings)
   Uninstall: install.sh --uninstall
 

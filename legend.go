@@ -41,6 +41,7 @@ var legendTexts = map[string]map[string]string{
 		"left_click": "Linksklick", "right_click": "Rechtsklick",
 		"mouse": "Maus", "nav": "Taste wählen", "position": "Oben/Unten", "toggle": "Ein/Aus",
 		"lstick": "L-Stick", "rstick": "R-Stick",
+		"mousemode": "Nur Maus", "click": "Klick", "scroll": "Scrollen", "end": "Beenden",
 	},
 	"en": {
 		"press": "Type", "backspace": "Delete", "space": "Space", "enter": "Enter",
@@ -48,6 +49,7 @@ var legendTexts = map[string]map[string]string{
 		"left_click": "Left click", "right_click": "Right click",
 		"mouse": "Mouse", "nav": "Select key", "position": "Top/Bottom", "toggle": "On/Off",
 		"lstick": "L stick", "rstick": "R stick",
+		"mousemode": "Mouse only", "click": "Click", "scroll": "Scroll", "end": "Exit",
 	},
 }
 
@@ -116,6 +118,46 @@ func BuildLegend(cfg Config, p ControllerProfile, lang string, daemon bool) []Le
 			chips = append(chips, LegendChip{Label: p.Label(pos), Color: p.Colors[pos]})
 		}
 		items = append(items, LegendItem{Chips: chips, Text: tx["toggle"]})
+	}
+	if combo := strings.TrimSpace(g.MouseCombo); combo != "" {
+		var chips []LegendChip
+		for _, part := range strings.Split(combo, "+") {
+			pos := strings.TrimSpace(strings.ToLower(part))
+			chips = append(chips, LegendChip{Label: p.Label(pos), Color: p.Colors[pos]})
+		}
+		items = append(items, LegendItem{Chips: chips, Text: tx["mousemode"]})
+	}
+	return items
+}
+
+// BuildMouseLegend lists the buttons of mouse mode for the small badge.
+func BuildMouseLegend(cfg Config, p ControllerProfile, lang string) []LegendItem {
+	tx := legendTexts[lang]
+	if tx == nil {
+		tx = legendTexts["en"]
+	}
+	g := cfg.Gamepad
+	chip := func(button string) LegendChip {
+		pos := button
+		if g.SwapAB && (button == "a" || button == "b") {
+			pos = map[string]string{"a": "b", "b": "a"}[button]
+		}
+		return LegendChip{Label: p.Label(pos), Color: p.Colors[pos]}
+	}
+	var items []LegendItem
+	if g.Buttons.Press != "" {
+		items = append(items, LegendItem{Chips: []LegendChip{chip(g.Buttons.Press)}, Text: tx["click"]})
+	}
+	if g.Buttons.RightClick != "" {
+		items = append(items, LegendItem{Chips: []LegendChip{chip(g.Buttons.RightClick)}, Text: tx["right_click"]})
+	}
+	navStick := tx["rstick"]
+	if g.MouseStick != "left" {
+		navStick = tx["lstick"]
+	}
+	items = append(items, LegendItem{Chips: []LegendChip{{Label: navStick}}, Text: tx["scroll"]})
+	if g.Buttons.Close != "" {
+		items = append(items, LegendItem{Chips: []LegendChip{chip(g.Buttons.Close)}, Text: tx["end"]})
 	}
 	return items
 }

@@ -70,6 +70,7 @@ type GamepadConfig struct {
 	SwapXY        string // "auto", "true", "false"
 	MouseStick    string // "left" or "right" (nav uses the other stick)
 	ToggleCombo   string // e.g. "select+start", empty = disabled
+	MouseCombo    string // mouse only (keyboard hidden), empty = disabled
 	ComboPeriodMs int    // timing window for combo detection (default 200)
 	Controller    string // auto, xbox, playstation, nintendo, 8bitdo, generic (button labels)
 	SwapAB        bool   // swap the functions of A and B (bottom and right face button)
@@ -93,6 +94,7 @@ func DefaultConfig() Config {
 			SwapXY:        "auto",
 			MouseStick:    "right",
 			ToggleCombo:   "guide+select",
+			MouseCombo:    "guide+start",
 			ComboPeriodMs: 200,
 			Controller:    ProfileAuto,
 			Buttons: ButtonsConfig{
@@ -107,7 +109,7 @@ func DefaultConfig() Config {
 				PositionToggle: "start",
 			},
 		},
-		Mouse: MouseConfig{Enabled: true, Sensitivity: 10},
+		Mouse: MouseConfig{Enabled: true, Sensitivity: 18},
 	}
 }
 
@@ -240,6 +242,8 @@ func parseINI(r io.Reader, cfg *Config) error {
 				cfg.Gamepad.MouseStick = val
 			case "toggle_combo":
 				cfg.Gamepad.ToggleCombo = val
+			case "mouse_combo":
+				cfg.Gamepad.MouseCombo = val
 			case "combo_period_ms":
 				if n, err := strconv.Atoi(val); err == nil {
 					cfg.Gamepad.ComboPeriodMs = n
@@ -339,6 +343,7 @@ b.WriteString(line(kv("deadzone", strconv.FormatFloat(cfg.Gamepad.Deadzone, 'f',
 	b.WriteString("                             # buttons: a, b, x, y, lb, rb, lt, rt, l3, r3, start, select, guide,\n")
 	b.WriteString("                             #          up, down, left, right (or dpad_up, dpad_down, etc.)\n")
 	b.WriteString("                             # examples: guide+a, l3+r3, select+start, select+start+lb+rb\n")
+	b.WriteString(line(kv("mouse_combo", cfg.Gamepad.MouseCombo), "mouse only: keyboard hidden, small mouse badge (empty = disabled)"))
 	b.WriteString(line(kvf("combo_period_ms", cfg.Gamepad.ComboPeriodMs), "ms window for all combo buttons to be held (50-2000)"))
 	b.WriteString("\n")
 
@@ -732,8 +737,8 @@ func ValidateConfig(cfg *Config) {
 		cfg.Gamepad.Deadzone = 0.25
 	}
 	if cfg.Mouse.Sensitivity < 1 || cfg.Mouse.Sensitivity > 50 {
-		log.Printf("Warning: sensitivity %d out of range [1,50], using 10", cfg.Mouse.Sensitivity)
-		cfg.Mouse.Sensitivity = 10
+		log.Printf("Warning: sensitivity %d out of range [1,50], using 18", cfg.Mouse.Sensitivity)
+		cfg.Mouse.Sensitivity = 18
 	}
 	if cfg.Gamepad.LongPressMs < 100 || cfg.Gamepad.LongPressMs > 5000 {
 		log.Printf("Warning: long_press_ms %d out of range [100,5000], using 500", cfg.Gamepad.LongPressMs)
@@ -775,4 +780,36 @@ func ValidateConfig(cfg *Config) {
 			cfg.Gamepad.ToggleCombo = ""
 		}
 	}
+	if cfg.Gamepad.MouseCombo != "" {
+		if _, err := parseComboString(cfg.Gamepad.MouseCombo); err != nil {
+			log.Printf("Warning: invalid mouse_combo %q: %v - disabling", cfg.Gamepad.MouseCombo, err)
+			cfg.Gamepad.MouseCombo = ""
+		} else if sameCombo(cfg.Gamepad.MouseCombo, cfg.Gamepad.ToggleCombo) {
+			log.Printf("Warning: mouse_combo equals toggle_combo - disabling mouse_combo")
+			cfg.Gamepad.MouseCombo = ""
+		}
+	}
+	if cfg.Window.Opacity < 0.2 || cfg.Window.Opacity > 1 {
+		log.Printf("Warning: opacity %.2f out of range [0.2,1], using 1", cfg.Window.Opacity)
+		cfg.Window.Opacity = 1
+	}
+}
+
+// sameCombo reports whether two combo strings name the same buttons.
+func sameCombo(a, b string) bool {
+	ba, errA := parseComboString(a)
+	bb, errB := parseComboString(b)
+	if errA != nil || errB != nil || len(ba) == 0 || len(ba) != len(bb) {
+		return false
+	}
+	names := map[string]bool{}
+	for _, c := range ba {
+		names[c.Name] = true
+	}
+	for _, c := range bb {
+		if !names[c.Name] {
+			return false
+		}
+	}
+	return true
 }

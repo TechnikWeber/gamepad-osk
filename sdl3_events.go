@@ -62,6 +62,8 @@ const (
 	SDLK_ESCAPE = uint32(C.SDLK_ESCAPE)
 	SDLK_TAB    = uint32(C.SDLK_TAB)
 	SDLK_S      = uint32(C.SDLK_S)
+	SDLK_PAGEUP   = uint32(C.SDLK_PAGEUP)
+	SDLK_PAGEDOWN = uint32(C.SDLK_PAGEDOWN)
 )
 
 // SDL3PollUIEvent returns the next event with mouse/key details.

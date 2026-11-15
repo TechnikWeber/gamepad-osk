@@ -12,6 +12,7 @@ package main
 
 // --- Layer shell state ---
 static struct zwlr_layer_shell_v1 *layer_shell = NULL;
+static struct wl_compositor *compositor = NULL; // for the empty input region
 static struct zwlr_layer_surface_v1 *layer_surface = NULL;
 static struct wl_surface *wl_surf = NULL;
 static uint32_t configure_serial = 0;
@@ -78,6 +79,10 @@ static void registry_global(void *data, struct wl_registry *registry,
     if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
         layer_shell = wl_registry_bind(registry, name,
             &zwlr_layer_shell_v1_interface, version < 4 ? version : 4);
+    }
+    if (strcmp(interface, wl_compositor_interface.name) == 0 && !compositor) {
+        compositor = wl_registry_bind(registry, name,
+            &wl_compositor_interface, version < 4 ? version : 4);
     }
     if (strcmp(interface, "wl_output") == 0 && num_outputs < MAX_OUTPUTS) {
         struct wl_output *out = wl_registry_bind(registry, name,
@@ -219,6 +224,14 @@ static int attach_layer_shell_async(SDL_Window *sdl_win, int width, int height,
         ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
     zwlr_layer_surface_v1_set_exclusive_zone(layer_surface, panel_avoid ? 0 : -1);
 
+    // Click-through: the keyboard and the mouse badge take no pointer input
+    // (they are driven by the controller), so clicks reach the window behind.
+    if (compositor) {
+        struct wl_region *empty = wl_compositor_create_region(compositor);
+        wl_surface_set_input_region(wl_surf, empty);
+        wl_region_destroy(empty);
+    }
+
     // Commit to trigger configure -- DO NOT WAIT (no roundtrip)
     configured = 0;
     wl_surface_commit(wl_surf);
@@ -270,6 +283,10 @@ static void cleanup_layer_shell() {
     if (layer_shell) {
         zwlr_layer_shell_v1_destroy(layer_shell);
         layer_shell = NULL;
+    }
+    if (compositor) {
+        wl_compositor_destroy(compositor);
+        compositor = NULL;
     }
     for (int i = 0; i < num_outputs; i++) {
         if (discovered_outputs[i].output) {

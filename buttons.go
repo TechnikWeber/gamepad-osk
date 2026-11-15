@@ -77,6 +77,9 @@ func BuildActionMap(cfg GamepadConfig) ActionMap {
 	axesRelease := make(map[uint16]ActionType)
 
 	setBtn := func(buttonName string, action ActionType) {
+		if buttonName == "" {
+			return // function switched off
+		}
 		info, ok := table[buttonName]
 		if !ok {
 			log.Printf("Warning: unknown button %q in config", buttonName)

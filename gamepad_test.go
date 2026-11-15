@@ -392,7 +392,7 @@ func TestComboDetect_TimingWindow(t *testing.T) {
 	gp.handleButton(0x13a, 1)
 
 	// Simulate expired window by setting comboFirstPress in the past
-	gp.comboFirstPress = time.Now().Add(-100 * time.Millisecond)
+	gp.combos[0].firstPress = time.Now().Add(-100 * time.Millisecond)
 
 	// Press start - window expired, should not fire
 	a := gp.handleButton(0x13b, 1)

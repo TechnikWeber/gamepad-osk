@@ -78,33 +78,40 @@ func (r *Renderer) drawLegend(y int32) {
 		}
 		x := (sw - total) / 2
 		ly := y + int32(li)*m.lineH //nolint:gosec // G115: line index fits in int32
-		chipY := ly + (m.lineH-m.chipH)/2
-
-		for i, it := range line {
-			if i > 0 {
-				x += m.itemGap
-			}
-			for ci, c := range it.Chips {
-				if ci > 0 {
-					x += m.chipGap
-				}
-				cw := max32(m.chipH, chipW(c.Label)+2*m.chipPad)
-				bg, fg := r.legendChipColors(c)
-				chip := FRect{X: float32(x), Y: float32(chipY), W: float32(cw), H: float32(m.chipH)}
-				if r.theme.Radius > 0 {
-					r.fillRoundRect(chip, float32(m.chipH)/2, bg)
-				} else {
-					setColor(r.renderer, bg)
-					SDL3RenderFillRect(r.renderer, chip)
-				}
-				r.renderText(r.fontChip, c.Label, fg, chip, AlignCenter)
-				x += cw
-			}
-			x += m.textGap
-			tw := textW(it.Text)
-			r.renderText(r.fontSmall, it.Text, r.theme.ModifierText,
-				FRect{X: float32(x), Y: float32(ly), W: float32(tw), H: float32(m.lineH)}, AlignLeft)
-			x += tw
-		}
+		r.drawLegendItems(line, m, x, ly)
 	}
+}
+
+// drawLegendItems draws one legend line starting at x; returns the end x.
+func (r *Renderer) drawLegendItems(line []LegendItem, m legendMetrics, x, ly int32) int32 {
+	chipW := func(s string) int32 { w, _ := TTF3GetStringSize(r.fontChip, s); return w }
+	textW := func(s string) int32 { w, _ := TTF3GetStringSize(r.fontSmall, s); return w }
+	chipY := ly + (m.lineH-m.chipH)/2
+	for i, it := range line {
+		if i > 0 {
+			x += m.itemGap
+		}
+		for ci, c := range it.Chips {
+			if ci > 0 {
+				x += m.chipGap
+			}
+			cw := max32(m.chipH, chipW(c.Label)+2*m.chipPad)
+			bg, fg := r.legendChipColors(c)
+			chip := FRect{X: float32(x), Y: float32(chipY), W: float32(cw), H: float32(m.chipH)}
+			if r.theme.Radius > 0 {
+				r.fillRoundRect(chip, float32(m.chipH)/2, bg)
+			} else {
+				setColor(r.renderer, bg)
+				SDL3RenderFillRect(r.renderer, chip)
+			}
+			r.renderText(r.fontChip, c.Label, fg, chip, AlignCenter)
+			x += cw
+		}
+		x += m.textGap
+		tw := textW(it.Text)
+		r.renderText(r.fontSmall, it.Text, r.theme.ModifierText,
+			FRect{X: float32(x), Y: float32(ly), W: float32(tw), H: float32(m.lineH)}, AlignLeft)
+		x += tw
+	}
+	return x
 }

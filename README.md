@@ -30,8 +30,15 @@ a button legend, controller profiles, a German layout and a one-line install.
 ## What is new in this fork
 
 * **Settings window** with live preview: theme, layout, controller, A/B swap,
-  show/hide combo, mouse, size and *start at login* with one click. Works
+  show/hide combo, mouse, size, transparency and *start at login* with one
+  click. A second page puts every function on the button you want. Works
   with the controller, the mouse or the keyboard.
+* **Mouse mode** (Guide + Start): the keyboard stays hidden, only a small
+  mouse badge sits at the bottom centre. Stick = cursor, A = click, the
+  other stick scrolls, the d-pad sends arrow keys, B ends it.
+* **Transparency that works on Wayland** (window opacity has no effect on
+  layer surfaces there), and the keyboard is **click-through**: mouse clicks
+  reach the window behind it.
 * **Light theme by default.** Rounded white keys, soft shadow, blue focus,
   like a phone keyboard. `night` is the same in dark. All 60 original themes
   stay, the original look is `theme = matrix`.
@@ -96,6 +103,7 @@ Xbox names:
 | Button | Does |
 |---|---|
 | Guide + Select | show / hide |
+| Guide + Start | mouse mode: keyboard hidden, small mouse badge |
 | A | type the highlighted key (hold on a vowel: é, è, ñ …) |
 | X / Y | backspace / space |
 | LT (hold) / RT | capitals / Enter |
@@ -104,7 +112,13 @@ Xbox names:
 | left stick, d-pad | move between keys |
 | Start | keyboard top / bottom |
 
-While the keyboard is **hidden** it reads only the toggle combo: no mouse,
+**Mouse mode:** stick moves the cursor, A or RB = left click, LB = right
+click, the other stick scrolls, d-pad = arrow keys, B ends mouse mode,
+Guide + Select switches to the keyboard.
+
+<img src="docs/mouse.png" width="420" alt="Mouse mode badge: a small rounded bar at the bottom of the screen with a blue mouse symbol and A Klick, LB Rechtsklick, R-Stick Scrollen, B Beenden">
+
+While the keyboard is **hidden** it reads only the two combos: no mouse,
 no grab. Games keep the controller to themselves (e.g. Minecraft with
 Controlify). While it is visible it grabs the controller so input does not
 reach the game.
@@ -114,10 +128,14 @@ reach the game.
 Start menu → **gamepad-osk Settings**, `gamepad-osk --settings`, or the
 **Settings** key on the keyboard itself (Shift + Settings cycles themes).
 
-<img src="docs/settings.png" width="640" alt="Settings window: keyboard preview on top, below two columns with Start at login, Theme, Keyboard layout, Button names, Swap A and B, Show/hide with, Mouse, Mouse speed, Show button legend, Position and Size, buttons Close and Save">
+<img src="docs/settings.png" width="640" alt="Settings window: keyboard preview on top, tabs General and Buttons, below two columns with Start at login, Theme, Keyboard layout, Button names, Show/hide with, Mouse only with, Mouse, Mouse speed, Transparency, Show button legend, Position and Size, buttons Close and Save">
 
-D-pad up/down selects, left/right changes, A toggles, Start saves, B closes.
-Saving restarts the running keyboard so changes apply at once.
+D-pad up/down selects, left/right changes, A toggles, LB/RB switch between
+the pages *General* and *Buttons*, Start saves, B closes. On *Buttons* every
+function gets the button you choose; a button that is already taken swaps
+with it. Saving restarts the running keyboard so changes apply at once.
+
+<img src="docs/settings-buttons.png" width="640" alt="Settings page Buttons: Swap A and B, then Type key A, Delete X, Space Y, Enter RT, Shift LT, Hide B, Left click RB, Right click LB, Top/bottom Start">
 
 ## Settings file
 
@@ -129,6 +147,7 @@ name = light          # light, night, matrix, nord, ... (Design/Cfg key cycles)
 
 [window]
 legend = true         # button legend under the keys
+opacity = 0.95        # 0.2-1.0, now also on Wayland
 
 [keys]
 layout = auto         # auto, us (QWERTY), de (QWERTZ)
@@ -137,7 +156,14 @@ layout = auto         # auto, us (QWERTY), de (QWERTZ)
 controller = auto     # auto, xbox, playstation, nintendo, 8bitdo, generic
 swap_ab = false       # true: A and B trade places
 toggle_combo = guide+select
+mouse_combo = guide+start   # mouse mode, empty = off
 mouse_stick = right   # left or right
+
+[gamepad.buttons]
+position_toggle = start     # any function can be empty = off
+
+[mouse]
+sensitivity = 18      # new default (was 10)
 ```
 
 Everything else (button mapping, size, opacity, key repeat …) is described

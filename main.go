@@ -9,7 +9,7 @@ import (
 	"syscall"
 )
 
-var version = "2.3.0-tw"
+var version = "2.4.0-tw"
 
 // Verbose controls debug logging throughout the app
 var Verbose bool
@@ -33,6 +33,12 @@ func main() {
 				os.Exit(0)
 			}
 			fmt.Fprintln(os.Stderr, "No running instance, starting new...")
+		case "--mouse":
+			if IPCSend("mouse") {
+				os.Exit(0)
+			}
+			fmt.Fprintln(os.Stderr, "No running instance (start it with --daemon first)")
+			os.Exit(1)
 		case "--version", "-V":
 			fmt.Printf("gamepad-osk v%s\n", version)
 			os.Exit(0)
@@ -252,6 +258,7 @@ OPTIONS
   --screenshot FILE    Render the keyboard into a BMP file and exit
                        (with --cursor ROW,COL and --shift for the picture)
   --toggle             Toggle visibility of running instance (for evsieve/hotkey)
+  --mouse              Toggle mouse mode of the running instance (keyboard hidden)
   --daemon             Start hidden, wait for toggle combo or --toggle to show
                        Close button (B) hides instead of exiting in daemon mode
   --setup              Check system configuration (udev, permissions, config)

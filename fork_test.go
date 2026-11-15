@@ -14,6 +14,10 @@ func TestWriteINIRoundTripForkKeys(t *testing.T) {
 	cfg.Gamepad.Controller = Profile8BitDo
 	cfg.Gamepad.SwapAB = true
 	cfg.Gamepad.ToggleCombo = "select+start"
+	cfg.Gamepad.MouseCombo = "l3+r3"
+	cfg.Gamepad.Buttons.Press = "b"
+	cfg.Gamepad.Buttons.PositionToggle = ""
+	cfg.Window.Opacity = 0.6
 	cfg.Gamepad.MouseStick = "left"
 	cfg.Mouse.Enabled = false
 	cfg.Mouse.Sensitivity = 23
@@ -121,5 +125,77 @@ func TestQWERTZUndoRedoUseSwappedCodes(t *testing.T) {
 	}
 	if KeyAction(row[1]) != "paste" || KeyAction(LayoutQWERTZ[5][len(LayoutQWERTZ[5])-1]) != "cfg" {
 		t.Error("translated keys must keep their actions")
+	}
+}
+
+func TestDefaultMouseSpeedAndCombo(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Mouse.Sensitivity != 18 {
+		t.Errorf("default sensitivity = %d, want 18", cfg.Mouse.Sensitivity)
+	}
+	if cfg.Gamepad.MouseCombo != "guide+start" {
+		t.Errorf("default mouse_combo = %q", cfg.Gamepad.MouseCombo)
+	}
+}
+
+func TestMouseComboEqualToToggleIsDisabled(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Gamepad.MouseCombo = "select+guide" // same buttons, other order
+	ValidateConfig(&cfg)
+	if cfg.Gamepad.MouseCombo != "" {
+		t.Errorf("mouse_combo equal to toggle_combo should be disabled, got %q", cfg.Gamepad.MouseCombo)
+	}
+}
+
+func TestMouseComboFires(t *testing.T) {
+	cfg := DefaultConfig()
+	gp := NewGamepadReader(cfg)
+	gp.handleButton(0x13c, 1) // guide
+	if a := gp.handleButton(0x13b, 1); a.Type != ActionMouseMode { // start
+		t.Errorf("guide+start = action %d, want ActionMouseMode", a.Type)
+	}
+	gp.handleButton(0x13b, 0)
+	gp.handleButton(0x13c, 0)
+	gp.handleButton(0x13c, 1)
+	if a := gp.handleButton(0x13a, 1); a.Type != ActionToggle { // select
+		t.Errorf("guide+select = action %d, want ActionToggle", a.Type)
+	}
+}
+
+func TestSwitchedOffButtonHasNoAction(t *testing.T) {
+	g := DefaultConfig().Gamepad
+	g.Buttons.PositionToggle = ""
+	am := BuildActionMap(g)
+	if _, ok := am.BtnPress[0x13b]; ok {
+		t.Error("start should do nothing when position_toggle is off")
+	}
+}
+
+func TestSettingsMappingSwapsDuplicates(t *testing.T) {
+	s := &settingsUI{cfg: DefaultConfig(), tx: settingsTexts["en"]}
+	s.buildRows()
+	// Buttons page: row 0 = swap A/B, row 1 = press, row 2 = backspace (x)
+	press := s.pages[1][1]
+	choices := press.options()
+	xIdx := -1
+	for i, l := range choices {
+		if l == "X" {
+			xIdx = i
+		}
+	}
+	if xIdx < 0 {
+		t.Fatalf("no X in %v", choices)
+	}
+	press.set(xIdx)
+	b := s.cfg.Gamepad.Buttons
+	if b.Press != "x" || b.Backspace != "a" {
+		t.Errorf("press=%q backspace=%q, want x and a (swapped)", b.Press, b.Backspace)
+	}
+}
+
+func TestMouseLegend(t *testing.T) {
+	items := BuildMouseLegend(DefaultConfig(), GetControllerProfile(ProfileXbox), "de")
+	if len(items) != 4 || items[0].Text != "Klick" || items[len(items)-1].Chips[0].Label != "B" {
+		t.Errorf("mouse legend = %+v", items)
 	}
 }

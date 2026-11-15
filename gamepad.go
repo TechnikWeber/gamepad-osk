@@ -81,12 +81,23 @@ const (
 	ActionSpaceRelease
 	ActionEnterRelease
 	ActionToggle
+	ActionMouseMode // second combo: mouse only, keyboard hidden
 )
 
 type Action struct {
 	Type ActionType
 	DX   int
 	DY   int
+	Dpad bool // ActionNavigate came from the d-pad (not the stick)
+}
+
+// comboState tracks one button combination (show/hide, mouse mode).
+type comboState struct {
+	spec       string
+	buttons    []ComboButton // nil = disabled
+	action     ActionType
+	firstPress time.Time // when the first combo button was pressed
+	fired      bool      // edge-trigger flag (prevents repeat while held)
 }
 
 type NavAxis struct {
@@ -135,13 +146,13 @@ type GamepadReader struct {
 
 	profileID string // controller profile (button labels), see controller.go
 
-	// Toggle combo state
-	comboButtons    []ComboButton     // parsed from config at startup (nil = disabled)
-	comboPeriodMs   int               // timing window
-	btnHeld         map[uint16]bool   // current button press state
-	axisState       map[uint16]int32  // current axis values (for d-pad and triggers)
-	comboFirstPress time.Time         // when the first combo button was pressed
-	comboFired      bool              // edge-trigger flag (prevents repeat while held)
+	ForceMouse bool // mouse mode: move the cursor even if [mouse] enabled = false
+
+	// Combo state: show/hide keyboard and mouse mode
+	combos        []*comboState
+	comboPeriodMs int              // timing window
+	btnHeld       map[uint16]bool  // current button press state
+	axisState     map[uint16]int32 // current axis values (for d-pad and triggers)
 
 	// Last Open() error string. Suppresses repeat log lines while the
 	// reconnect loop retries every 2s with the same error (e.g. no gamepad
@@ -168,19 +179,28 @@ func NewGamepadReader(config Config) *GamepadReader {
 
 	gp.setStickAxes()
 
-	// Parse toggle combo
-	if config.Gamepad.ToggleCombo != "" {
-		buttons, err := parseComboString(config.Gamepad.ToggleCombo)
-		if err != nil {
-			log.Printf("Warning: invalid toggle_combo: %v", err)
-		} else {
-			gp.comboButtons = buttons
-			gp.comboPeriodMs = config.Gamepad.ComboPeriodMs
-			if gp.comboPeriodMs <= 0 {
-				gp.comboPeriodMs = 200
-			}
-			log.Printf("Toggle combo: %s (%dms window)", config.Gamepad.ToggleCombo, gp.comboPeriodMs)
+	// Parse combos (show/hide keyboard, mouse mode)
+	gp.comboPeriodMs = config.Gamepad.ComboPeriodMs
+	if gp.comboPeriodMs <= 0 {
+		gp.comboPeriodMs = 200
+	}
+	for _, c := range []struct {
+		key, spec string
+		action    ActionType
+	}{
+		{"toggle_combo", config.Gamepad.ToggleCombo, ActionToggle},
+		{"mouse_combo", config.Gamepad.MouseCombo, ActionMouseMode},
+	} {
+		if c.spec == "" {
+			continue
 		}
+		buttons, err := parseComboString(c.spec)
+		if err != nil {
+			log.Printf("Warning: invalid %s: %v", c.key, err)
+			continue
+		}
+		gp.combos = append(gp.combos, &comboState{spec: c.spec, buttons: buttons, action: c.action})
+		log.Printf("%s: %s (%dms window)", c.key, c.spec, gp.comboPeriodMs)
 	}
 
 	return gp
@@ -481,8 +501,9 @@ func (gp *GamepadReader) ReadEvents() []Action {
 				gp.axisState = make(map[uint16]int32)
 				gp.ltActive = false
 				gp.rtActive = false
-				gp.comboFirstPress = time.Time{}
-				gp.comboFired = false
+				for _, c := range gp.combos {
+					c.firstPress, c.fired = time.Time{}, false
+				}
 			}
 			break
 		}
@@ -498,24 +519,25 @@ func (gp *GamepadReader) ReadEvents() []Action {
 	// Adaptive repeat (stick + d-pad independently)
 	now := time.Now()
 	for _, pair := range []struct {
-		nav *NavAxis
-		isX bool
+		nav  *NavAxis
+		isX  bool
+		dpad bool
 	}{
-		{&gp.navX, true}, {&gp.navY, false},
-		{&gp.dpadX, true}, {&gp.dpadY, false},
+		{&gp.navX, true, false}, {&gp.navY, false, false},
+		{&gp.dpadX, true, true}, {&gp.dpadY, false, true},
 	} {
 		if pair.nav.Direction != 0 && now.Sub(pair.nav.LastMove) >= pair.nav.RepeatInterval() {
 			pair.nav.LastMove = now
 			if pair.isX {
-				actions = append(actions, Action{Type: ActionNavigate, DX: pair.nav.Direction})
+				actions = append(actions, Action{Type: ActionNavigate, DX: pair.nav.Direction, Dpad: pair.dpad})
 			} else {
-				actions = append(actions, Action{Type: ActionNavigate, DY: pair.nav.Direction})
+				actions = append(actions, Action{Type: ActionNavigate, DY: pair.nav.Direction, Dpad: pair.dpad})
 			}
 		}
 	}
 
 	// Mouse
-	if gp.config.Mouse.Enabled && (math.Abs(gp.mouseX) > 0.01 || math.Abs(gp.mouseY) > 0.01) {
+	if (gp.config.Mouse.Enabled || gp.ForceMouse) && (math.Abs(gp.mouseX) > 0.01 || math.Abs(gp.mouseY) > 0.01) {
 		s := float64(gp.config.Mouse.Sensitivity)
 		actions = append(actions, Action{
 			Type: ActionMouseMove,
@@ -676,28 +698,36 @@ func (gp *GamepadReader) updateNav(nav *NavAxis, direction int, isX bool) Action
 			now := time.Now()
 			nav.HeldSince = now
 			nav.LastMove = now
+			dpad := nav == &gp.dpadX || nav == &gp.dpadY
 			if isX {
-				return Action{Type: ActionNavigate, DX: direction}
+				return Action{Type: ActionNavigate, DX: direction, Dpad: dpad}
 			}
-			return Action{Type: ActionNavigate, DY: direction}
+			return Action{Type: ActionNavigate, DY: direction, Dpad: dpad}
 		}
 		nav.HeldSince = time.Time{}
 	}
 	return Action{Type: ActionNone}
 }
 
-// checkCombo checks if the toggle combo is fully satisfied and returns ActionToggle if so.
-// Implements edge-triggering (fires once per press) and timing window.
-// Timer starts on the first button press, not when all buttons are held.
-// Window expiry only takes effect on the next press cycle (requires button release to reset).
+// checkCombo checks all combos and returns the action of the first one
+// that is fully satisfied (ActionToggle, ActionMouseMode).
 func (gp *GamepadReader) checkCombo() Action {
-	if len(gp.comboButtons) == 0 {
-		return Action{Type: ActionNone}
+	for _, c := range gp.combos {
+		if a := gp.checkOneCombo(c); a.Type != ActionNone {
+			return a
+		}
 	}
+	return Action{Type: ActionNone}
+}
 
+// checkOneCombo implements edge-triggering (fires once per press) and the
+// timing window. The timer starts on the first button press, not when all
+// buttons are held. Window expiry only takes effect on the next press cycle
+// (requires button release to reset).
+func (gp *GamepadReader) checkOneCombo(c *comboState) Action {
 	allHeld := true
 	anyHeld := false
-	for _, cb := range gp.comboButtons {
+	for _, cb := range c.buttons {
 		if gp.isComboButtonHeld(cb) {
 			anyHeld = true
 		} else {
@@ -707,31 +737,31 @@ func (gp *GamepadReader) checkCombo() Action {
 
 	if !anyHeld {
 		// Full release - reset everything
-		gp.comboFired = false
-		gp.comboFirstPress = time.Time{}
+		c.fired = false
+		c.firstPress = time.Time{}
 		return Action{Type: ActionNone}
 	}
 
 	if !allHeld {
 		// Partial hold - start timer on first press, reset edge trigger
-		gp.comboFired = false
-		if gp.comboFirstPress.IsZero() {
-			gp.comboFirstPress = time.Now()
+		c.fired = false
+		if c.firstPress.IsZero() {
+			c.firstPress = time.Now()
 		}
 		return Action{Type: ActionNone}
 	}
 
 	// All held
-	if gp.comboFired {
+	if c.fired {
 		return Action{Type: ActionNone}
 	}
-	if gp.comboFirstPress.IsZero() {
-		gp.comboFirstPress = time.Now()
+	if c.firstPress.IsZero() {
+		c.firstPress = time.Now()
 	}
-	if time.Since(gp.comboFirstPress) <= time.Duration(gp.comboPeriodMs)*time.Millisecond {
-		gp.comboFired = true
-		Debugf("Toggle combo fired: %s", gp.config.Gamepad.ToggleCombo)
-		return Action{Type: ActionToggle}
+	if time.Since(c.firstPress) <= time.Duration(gp.comboPeriodMs)*time.Millisecond {
+		c.fired = true
+		Debugf("Combo fired: %s", c.spec)
+		return Action{Type: c.action}
 	}
 	// Window expired while buttons still held - wait for release before allowing retry
 	return Action{Type: ActionNone}
@@ -778,7 +808,7 @@ func (gp *GamepadReader) NeedsPolling() bool {
 	if gp.fd == nil {
 		return false
 	}
-	if gp.config.Mouse.Enabled && (math.Abs(gp.mouseX) > 0.01 || math.Abs(gp.mouseY) > 0.01) {
+	if (gp.config.Mouse.Enabled || gp.ForceMouse) && (math.Abs(gp.mouseX) > 0.01 || math.Abs(gp.mouseY) > 0.01) {
 		return true
 	}
 	for _, nav := range []*NavAxis{&gp.navX, &gp.navY, &gp.dpadX, &gp.dpadY} {

@@ -45,6 +45,12 @@ type Renderer struct {
 	// no clear/present, background as rounded panel of EmbedW x EmbedH.
 	Embedded       bool
 	EmbedW, EmbedH int32
+
+	// Opacity < 1 draws the frame see-through (Wayland: via an off-screen
+	// layer, because window opacity has no effect on layer surfaces).
+	Opacity        float32
+	layer          *Texture
+	layerW, layerH int32
 }
 
 // outW is the drawing width used for centring.
@@ -211,6 +217,7 @@ func (r *Renderer) Draw(kb *KeyboardState) {
 		return
 	}
 	r.dirtyFrames--
+	layered := r.beginFrame()
 
 	t := r.theme
 	if r.Embedded {
@@ -246,7 +253,7 @@ func (r *Renderer) Draw(kb *KeyboardState) {
 	}
 
 	if !r.Embedded {
-		SDL3RenderPresent(r.renderer)
+		r.endFrame(layered)
 	}
 }
 
@@ -585,6 +592,8 @@ func (r *Renderer) FlashGlyph(glyph string, text string) {
 }
 
 func (r *Renderer) Destroy() {
+	SDL3DestroyTexture(r.layer)
+	r.layer = nil
 	r.flushTexCache()
 	r.fonts.Close()
 }
