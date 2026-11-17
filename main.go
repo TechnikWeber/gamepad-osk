@@ -92,6 +92,8 @@ func main() {
 			}
 		case "--shift":
 			shot.Shift = true
+		case "--mouse-badge":
+			shot.MouseBadge = true
 		case "--config", "-c":
 			if i+1 < len(args) {
 				i++
@@ -257,6 +259,7 @@ OPTIONS
   --controller NAME    Button names: auto, xbox, playstation, nintendo, 8bitdo, generic
   --screenshot FILE    Render the keyboard into a BMP file and exit
                        (with --cursor ROW,COL and --shift for the picture)
+  --mouse-badge        With --screenshot: render the mouse-mode badge instead
   --toggle             Toggle visibility of running instance (for evsieve/hotkey)
   --mouse              Toggle mouse mode of the running instance (keyboard hidden)
   --daemon             Start hidden, wait for toggle combo or --toggle to show

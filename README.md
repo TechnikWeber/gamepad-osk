@@ -139,7 +139,7 @@ Xbox names:
 click, the other stick scrolls, d-pad = arrow keys, B ends mouse mode,
 Guide + Select switches to the keyboard.
 
-<img src="docs/mouse.png" width="420" alt="Mouse mode badge: a small rounded bar at the bottom of the screen with a blue mouse symbol and A Klick, LB Rechtsklick, R-Stick Scrollen, B Beenden">
+<img src="docs/mouse.png" width="420" alt="Mouse mode badge: a small rounded bar at the bottom of the screen with a blue mouse symbol and A Klick, LB Rechtsklick, L-Stick Scrollen, B Beenden">
 
 While the keyboard is **hidden** it reads only the two combos: no mouse,
 no grab. Games keep the controller to themselves (e.g. Minecraft with
@@ -151,7 +151,7 @@ reach the game.
 Start menu → **gamepad-osk Settings**, `gamepad-osk --settings`, or the
 **Settings** key on the keyboard itself (Shift + Settings cycles themes).
 
-<img src="docs/settings.png" width="640" alt="Settings window: keyboard preview on top, tabs General and Buttons, below two columns with Start at login, Theme, Keyboard layout, Button names, Show/hide with, Mouse only with, Mouse, Mouse speed, Transparency, Show button legend, Position and Size, buttons Close and Save">
+<img src="docs/settings.png" width="640" alt="Settings window: keyboard preview on top, tabs General and Buttons, below two columns with Start at login, Theme, Keyboard layout, Button names, Show/hide with, Mouse only with, Mouse, Mouse speed, Mouse fine control, Scroll fine control, Transparency, Show button legend, Position and Size, buttons Close and Save">
 
 D-pad up/down selects, left/right changes, A toggles, LB/RB switch between
 the pages *General*, *Buttons* and *Test*, Start saves, B closes. On *Buttons* every
@@ -214,7 +214,11 @@ take effect after `systemctl --user restart gamepad-osk`.
 gamepad-osk --layout de --controller nintendo --theme light --cursor 3,6 --screenshot shot.bmp
 ```
 
-renders the keyboard off-screen. All pictures here are made that way.
+renders the keyboard off-screen. All pictures here are made that way:
+`--mouse-badge` renders the mouse-mode badge instead, and
+`GAMEPAD_OSK_SETTINGS_SHOT=shot.bmp gamepad-osk --settings` the settings
+window (`GAMEPAD_OSK_SETTINGS_PAGE=buttons|test` for the other pages,
+`GAMEPAD_OSK_SETTINGS_PAD` for the controller name in the header).
 
 ## Credits and license
 

@@ -928,13 +928,19 @@ func RunSettings(cfg Config) error {
 	detected := ResolveLayout("auto")
 	s.detLayout = detected
 	s.tx = settingsTexts[UILanguage(detected)]
-	s.reopenGamepad()
+	shot := os.Getenv("GAMEPAD_OSK_SETTINGS_SHOT") // docs screenshots: render off-screen
+	if shot == "" {
+		s.reopenGamepad()
+	}
 	s.buildRows()
 	switch os.Getenv("GAMEPAD_OSK_SETTINGS_PAGE") { // docs screenshots
 	case "buttons":
 		s.setPage(1)
 	case "test":
 		s.setPage(2)
+	}
+	if shot != "" {
+		return renderSettingsShot(s, shot)
 	}
 
 	if os.Getenv("WAYLAND_DISPLAY") != "" && os.Getenv("SDL_VIDEODRIVER") == "" {
