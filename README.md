@@ -16,9 +16,11 @@
   <a href="https://github.com/0x90shell/gamepad-osk"><b>Original project</b></a>
 </p>
 
-Type on your Linux desktop with a game controller: an on-screen keyboard that
-appears with a button combo, moves the mouse with a stick and gets out of the
-way again. No Steam needed. Works on X11 and Wayland.
+Keyboard and mouse for your Linux desktop, on a game controller: an on-screen
+keyboard that appears with a button combo, moves the mouse with a stick and
+gets out of the way again. Only need the mouse? **Mouse mode** (Guide + Start)
+keeps the keyboard hidden and just moves the cursor. No Steam needed. Works on
+X11 and Wayland.
 
 This is a fork of **[gamepad-osk by 0x90shell](https://github.com/0x90shell/gamepad-osk)**.
 All the hard parts (evdev input, uinput typing, Wayland layer-shell, grab

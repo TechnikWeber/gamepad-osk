@@ -164,7 +164,7 @@ if has_systemd_user; then
     mkdir -p "$SVC_DIR"
     cat >"$SVC" <<'UNIT'
 [Unit]
-Description=gamepad-osk - on-screen keyboard for game controllers
+Description=gamepad-osk - on-screen keyboard and mouse for game controllers
 After=graphical-session.target
 PartOf=graphical-session.target
 
@@ -188,7 +188,7 @@ else
 [Desktop Entry]
 Type=Application
 Name=gamepad-osk
-Comment=On-screen keyboard for game controllers
+Comment=On-screen keyboard and mouse for game controllers
 Exec=$BIN --daemon
 X-GNOME-Autostart-enabled=true
 DESK

@@ -54,7 +54,7 @@ func ensureUserService() error {
 		return err
 	}
 	unit := fmt.Sprintf(`[Unit]
-Description=gamepad-osk - on-screen keyboard for game controllers
+Description=gamepad-osk - on-screen keyboard and mouse for game controllers
 After=graphical-session.target
 PartOf=graphical-session.target
 
@@ -119,7 +119,7 @@ func SetAutostart(on bool) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { //nolint:gosec // G301: user config dir
 		return err
 	}
-	desk := "[Desktop Entry]\nType=Application\nName=gamepad-osk\nComment=On-screen keyboard for game controllers\nExec=" +
+	desk := "[Desktop Entry]\nType=Application\nName=gamepad-osk\nComment=On-screen keyboard and mouse for game controllers\nExec=" +
 		exe + " --daemon\nX-GNOME-Autostart-enabled=true\n"
 	return os.WriteFile(path, []byte(desk), 0o644) //nolint:gosec // G306: desktop files are world-readable
 }

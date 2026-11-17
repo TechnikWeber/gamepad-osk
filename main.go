@@ -243,7 +243,7 @@ func printHelp(cfg Config) {
 			"  Buttons: a, b, x, y, lb, rb, lt, rt, l3, r3, start, select, guide, up, down, left, right"
 	}
 
-	fmt.Printf(`gamepad-osk v%s - Gamepad-controlled on-screen keyboard for Linux
+	fmt.Printf(`gamepad-osk v%s - Gamepad-controlled on-screen keyboard and mouse for Linux
 
 USAGE
   gamepad-osk [options] [/dev/input/device]
