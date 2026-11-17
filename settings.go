@@ -33,6 +33,7 @@ type settingsRow struct {
 	set            func(int)
 	min, max, step int
 	suffix         string
+	zero           string      // slider: text shown for value 0 (e.g. "Off")
 	skip           func() bool // choice: value not allowed, cycling steps over it
 }
 
@@ -56,6 +57,7 @@ var settingsTexts = map[string]map[string]string{
 		"page_general": "Allgemein", "page_buttons": "Belegung",
 		"mouse_combo": "Nur Maus mit", "page_test": "Test",
 		"test_hint": "Knöpfe drücken – sie leuchten auf · %s + %s zusammen: zurück", "last": "Zuletzt gedrückt", "press_any": "Drück einen Knopf …", "unused": "nicht belegt", "nav": "Taste wählen", "caps": "Feststelltaste", "mouse_move": "Maus bewegen", "part_of": "mit", "key_badges": "Buttons auf den Tasten", "opacity": "Transparenz",
+		"mouse_curve": "Feinsteuerung Maus", "nav_curve": "Feinsteuerung Scrollen",
 		"b_press": "Taste tippen", "b_backspace": "Löschen", "b_space": "Leerzeichen",
 		"b_enter": "Enter", "b_shift": "Großschreiben (halten)", "b_close": "Ausblenden",
 		"b_left_click": "Linksklick", "b_right_click": "Rechtsklick", "b_position": "Oben/Unten wechseln",
@@ -80,6 +82,7 @@ var settingsTexts = map[string]map[string]string{
 		"page_general": "General", "page_buttons": "Buttons",
 		"mouse_combo": "Mouse only with", "page_test": "Test",
 		"test_hint": "Press buttons – they light up · %s + %s together: back", "last": "Last pressed", "press_any": "Press a button …", "unused": "not assigned", "nav": "Select key", "caps": "Caps Lock", "mouse_move": "Move mouse", "part_of": "with", "key_badges": "Buttons on the keys", "opacity": "Transparency",
+		"mouse_curve": "Mouse fine control", "nav_curve": "Scroll fine control",
 		"b_press": "Type key", "b_backspace": "Delete", "b_space": "Space",
 		"b_enter": "Enter", "b_shift": "Shift (hold)", "b_close": "Hide",
 		"b_left_click": "Left click", "b_right_click": "Right click", "b_position": "Top/bottom",
@@ -332,6 +335,10 @@ func (s *settingsUI) buildRows() {
 			}},
 		{label: s.t("speed"), kind: rowSlider, min: 1, max: 50, step: 1,
 			get: func() int { return s.cfg.Mouse.Sensitivity }, set: func(v int) { s.cfg.Mouse.Sensitivity = v }},
+		{label: s.t("mouse_curve"), kind: rowSlider, min: 0, max: 100, step: 10, suffix: " %", zero: s.t("off"),
+			get: func() int { return s.cfg.Mouse.Curve }, set: func(v int) { s.cfg.Mouse.Curve = v }},
+		{label: s.t("nav_curve"), kind: rowSlider, min: 0, max: 100, step: 10, suffix: " %", zero: s.t("off"),
+			get: func() int { return s.cfg.Gamepad.NavCurve }, set: func(v int) { s.cfg.Gamepad.NavCurve = v }},
 		{label: s.t("opacity"), kind: rowSlider, min: 0, max: 80, step: 5, suffix: " %",
 			get: func() int { return int(100 - s.cfg.Window.Opacity*100 + 0.5) },
 			set: func(v int) { s.cfg.Window.Opacity = float64(100-v) / 100 }},
@@ -744,6 +751,9 @@ func (s *settingsUI) drawRow(i int, rr FRect, first, last bool) {
 	case rowSlider:
 		v := row.get()
 		num := fmt.Sprintf("%d%s", v, row.suffix)
+		if v == 0 && row.zero != "" {
+			num = row.zero
+		}
 		tw := float32(140)
 		track := FRect{X: right - tw - 56, Y: rr.Y + rr.H/2 - 3, W: tw, H: 6}
 		r.fillRoundRect(track, 3, setOffGray)

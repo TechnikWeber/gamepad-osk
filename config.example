@@ -25,6 +25,7 @@ device =                     # empty = auto-detect, or /dev/input/eventX
 controller = auto            # auto, xbox, playstation, nintendo (also 8BitDo), generic: button names in the legend
 grab = true                  # grab device when visible (prevents input bleed to game)
 deadzone = 0.25              # stick deadzone (0.0-1.0)
+nav_curve = 30               # 0-100, fine control: slight tilt of the nav stick scrolls/repeats slower (0 = off)
 long_press_ms = 500          # ms to hold for accent popup (100-5000)
 swap_xy = auto               # auto = detect xpad/xpadneo/xone drivers (default), true = force swap, false = off
 mouse_stick = right          # left or right - nav uses the other stick
@@ -52,3 +53,4 @@ position_toggle = start      # toggle keyboard top/bottom (empty = disabled)
 [mouse]
 enabled = true               # enable mouse cursor via right stick
 sensitivity = 20             # 1-50, higher = faster cursor (Shift+up/down to adjust live)
+curve = 30                   # 0-100, fine control: slight tilt moves the cursor slower, full tilt unchanged (0 = off)

@@ -67,6 +67,7 @@ type GamepadConfig struct {
 	Device        string
 	Grab          bool
 	Deadzone      float64
+	NavCurve      int // 0-100: fine control of the nav stick (scrolling), 0 = off
 	LongPressMs   int
 	SwapXY        string // "auto", "true", "false"
 	MouseStick    string // "left" or "right" (nav uses the other stick)
@@ -81,6 +82,7 @@ type GamepadConfig struct {
 type MouseConfig struct {
 	Enabled     bool
 	Sensitivity int
+	Curve       int // 0-100: fine control for small stick movements, 0 = off (linear)
 }
 
 func DefaultConfig() Config {
@@ -91,6 +93,7 @@ func DefaultConfig() Config {
 		Gamepad: GamepadConfig{
 			Grab:          true,
 			Deadzone:      0.25,
+			NavCurve:      30,
 			LongPressMs:   500,
 			SwapXY:        "auto",
 			MouseStick:    "right",
@@ -110,7 +113,7 @@ func DefaultConfig() Config {
 				PositionToggle: "start",
 			},
 		},
-		Mouse: MouseConfig{Enabled: true, Sensitivity: 20},
+		Mouse: MouseConfig{Enabled: true, Sensitivity: 20, Curve: 30},
 	}
 }
 
@@ -235,6 +238,10 @@ func parseINI(r io.Reader, cfg *Config) error {
 				if f, err := strconv.ParseFloat(val, 64); err == nil {
 					cfg.Gamepad.Deadzone = f
 				}
+			case "nav_curve":
+				if n, err := strconv.Atoi(val); err == nil {
+					cfg.Gamepad.NavCurve = n
+				}
 			case "long_press_ms":
 				if n, err := strconv.Atoi(val); err == nil {
 					cfg.Gamepad.LongPressMs = n
@@ -289,6 +296,10 @@ func parseINI(r io.Reader, cfg *Config) error {
 				if n, err := strconv.Atoi(val); err == nil {
 					cfg.Mouse.Sensitivity = n
 				}
+			case "curve":
+				if n, err := strconv.Atoi(val); err == nil {
+					cfg.Mouse.Curve = n
+				}
 			default:
 				Debugf("unknown config key: mouse.%s", key)
 			}
@@ -336,7 +347,8 @@ func writeINI(w io.Writer, cfg Config) error {
 	b.WriteString("[gamepad]\n")
 	b.WriteString(line(kv("device", cfg.Gamepad.Device), "empty = auto-detect, or /dev/input/eventX"))
 	b.WriteString(line(kvf("grab", cfg.Gamepad.Grab), "grab device when visible (prevents input bleed to game)"))
-b.WriteString(line(kv("deadzone", strconv.FormatFloat(cfg.Gamepad.Deadzone, 'f', -1, 64)), "stick deadzone (0.0-1.0)"))
+	b.WriteString(line(kv("deadzone", strconv.FormatFloat(cfg.Gamepad.Deadzone, 'f', -1, 64)), "stick deadzone (0.0-1.0)"))
+	b.WriteString(line(kvf("nav_curve", cfg.Gamepad.NavCurve), "0-100, fine control: slight tilt of the nav stick scrolls/repeats slower (0 = off)"))
 	b.WriteString(line(kvf("long_press_ms", cfg.Gamepad.LongPressMs), "ms to hold for accent popup (100-5000)"))
 	b.WriteString(line(kv("controller", cfg.Gamepad.Controller), "auto, xbox, playstation, nintendo, 8bitdo or generic - button names in the legend"))
 	b.WriteString(line(kvf("swap_ab", cfg.Gamepad.SwapAB), "true = A and B trade places (bottom/right face button)"))
@@ -368,6 +380,7 @@ b.WriteString(line(kv("deadzone", strconv.FormatFloat(cfg.Gamepad.Deadzone, 'f',
 	b.WriteString("[mouse]\n")
 	b.WriteString(line(kvf("enabled", cfg.Mouse.Enabled), "enable mouse cursor via right stick"))
 	b.WriteString(line(kvf("sensitivity", cfg.Mouse.Sensitivity), "1-50, higher = faster cursor (Shift+up/down to adjust live)"))
+	b.WriteString(line(kvf("curve", cfg.Mouse.Curve), "0-100, fine control: slight tilt moves the cursor slower, full tilt unchanged (0 = off)"))
 
 	_, err := io.WriteString(w, b.String())
 	return err
@@ -697,6 +710,12 @@ func checkConfig(cfg Config) []string {
 	if cfg.Mouse.Sensitivity < 1 || cfg.Mouse.Sensitivity > 50 {
 		issues = append(issues, fmt.Sprintf("sensitivity %d out of range [1,50]", cfg.Mouse.Sensitivity))
 	}
+	if cfg.Mouse.Curve < 0 || cfg.Mouse.Curve > 100 {
+		issues = append(issues, fmt.Sprintf("curve %d out of range [0,100]", cfg.Mouse.Curve))
+	}
+	if cfg.Gamepad.NavCurve < 0 || cfg.Gamepad.NavCurve > 100 {
+		issues = append(issues, fmt.Sprintf("nav_curve %d out of range [0,100]", cfg.Gamepad.NavCurve))
+	}
 	if cfg.Gamepad.LongPressMs < 100 || cfg.Gamepad.LongPressMs > 5000 {
 		issues = append(issues, fmt.Sprintf("long_press_ms %d out of range [100,5000]", cfg.Gamepad.LongPressMs))
 	}
@@ -743,6 +762,14 @@ func ValidateConfig(cfg *Config) {
 	if cfg.Mouse.Sensitivity < 1 || cfg.Mouse.Sensitivity > 50 {
 		log.Printf("Warning: sensitivity %d out of range [1,50], using 20", cfg.Mouse.Sensitivity)
 		cfg.Mouse.Sensitivity = 20
+	}
+	if cfg.Mouse.Curve < 0 || cfg.Mouse.Curve > 100 {
+		log.Printf("Warning: curve %d out of range [0,100], using 30", cfg.Mouse.Curve)
+		cfg.Mouse.Curve = 30
+	}
+	if cfg.Gamepad.NavCurve < 0 || cfg.Gamepad.NavCurve > 100 {
+		log.Printf("Warning: nav_curve %d out of range [0,100], using 30", cfg.Gamepad.NavCurve)
+		cfg.Gamepad.NavCurve = 30
 	}
 	if cfg.Gamepad.LongPressMs < 100 || cfg.Gamepad.LongPressMs > 5000 {
 		log.Printf("Warning: long_press_ms %d out of range [100,5000], using 500", cfg.Gamepad.LongPressMs)

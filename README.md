@@ -190,12 +190,14 @@ swap_ab = false       # true: A and B trade places
 toggle_combo = guide+select
 mouse_combo = guide+start   # mouse mode, empty = off
 mouse_stick = right   # left or right
+nav_curve = 30        # 0-100, slight tilt of the other stick scrolls slower, 0 = off
 
 [gamepad.buttons]
 position_toggle = start     # any function can be empty = off
 
 [mouse]
 sensitivity = 20      # new default (was 10); same speed in mouse mode and with the keyboard
+curve = 30            # 0-100, fine control: slight tilt moves the cursor slower, full tilt unchanged, 0 = off
 ```
 
 Everything else (button mapping, size, opacity, key repeat …) is described

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -690,5 +691,72 @@ func TestMouseStickLeft(t *testing.T) {
 	a = gp.handleButton(BTN_THUMBR, 1)
 	if a.Type != ActionCapsToggle {
 		t.Errorf("R3 with mouse_stick=left = %v, want ActionCapsToggle", a.Type)
+	}
+}
+
+func TestMouseCurve(t *testing.T) {
+	dz := 0.25
+	// Off: unchanged linear response.
+	for _, m := range []float64{0.3, 0.5, 1} {
+		if got := mouseCurve(m, dz, 0); math.Abs(got-m) > 1e-9 {
+			t.Errorf("curve 0, m=%.2f: got %.3f, want %.3f", m, got, m)
+		}
+	}
+	// Full tilt stays the same at every strength.
+	for _, c := range []int{30, 100} {
+		if got := mouseCurve(1, dz, c); math.Abs(got-1) > 1e-9 {
+			t.Errorf("curve %d at full tilt: got %.3f, want 1", c, got)
+		}
+	}
+	// Slight tilt gets slower, more so with a stronger curve.
+	lin, mild, strong := mouseCurve(0.35, dz, 0), mouseCurve(0.35, dz, 30), mouseCurve(0.35, dz, 100)
+	if !(strong < mild && mild < lin) {
+		t.Errorf("slight tilt not slowed: off=%.3f mild=%.3f strong=%.3f", lin, mild, strong)
+	}
+	// Monotonic: more tilt never moves slower.
+	prev := 0.0
+	for m := dz; m <= 1; m += 0.01 {
+		v := mouseCurve(m, dz, 50)
+		if v < prev {
+			t.Fatalf("not monotonic at m=%.2f", m)
+		}
+		prev = v
+	}
+}
+
+func TestNavCurveFactor(t *testing.T) {
+	if f := navCurveFactor(0, 0); f != 1 {
+		t.Errorf("curve 0: factor %.2f, want 1", f)
+	}
+	if f := navCurveFactor(1, 100); math.Abs(f-1) > 1e-9 {
+		t.Errorf("full tilt: factor %.2f, want 1", f)
+	}
+	if f := navCurveFactor(0, 100); f != 0.2 {
+		t.Errorf("minimum factor %.2f, want 0.2", f)
+	}
+	if f := navCurveFactor(0.1, 30); f >= 1 || f < 0.7 {
+		t.Errorf("mild curve slight tilt: factor %.2f, want 0.7..1", f)
+	}
+}
+
+func TestMouseStepCurveSlowsSlightTilt(t *testing.T) {
+	run := func(curve int) int {
+		cfg := DefaultConfig()
+		cfg.Mouse.Curve = curve
+		gp := NewGamepadReader(cfg)
+		gp.mouseX = 0.4
+		start := time.Now()
+		gp.mouseStep(start)
+		total := 0
+		for i := 1; i <= 50; i++ {
+			if a, ok := gp.mouseStep(start.Add(time.Duration(i) * mouseReferenceStep)); ok {
+				total += a.DX
+			}
+		}
+		return total
+	}
+	off, on := run(0), run(60)
+	if on >= off {
+		t.Errorf("curve 60 should move less on slight tilt: off=%d on=%d", off, on)
 	}
 }

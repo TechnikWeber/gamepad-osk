@@ -104,6 +104,7 @@ type NavAxis struct {
 	Direction int
 	HeldSince time.Time
 	LastMove  time.Time
+	Tilt      float64 // stick only: deflection beyond the deadzone, 0..1 (0 = d-pad / not used)
 }
 
 func (n *NavAxis) RepeatInterval() time.Duration {
@@ -531,7 +532,11 @@ func (gp *GamepadReader) ReadEvents() []Action {
 		{&gp.navX, true, false}, {&gp.navY, false, false},
 		{&gp.dpadX, true, true}, {&gp.dpadY, false, true},
 	} {
-		if pair.nav.Direction != 0 && now.Sub(pair.nav.LastMove) >= pair.nav.RepeatInterval() {
+		interval := pair.nav.RepeatInterval()
+		if !pair.dpad {
+			interval = time.Duration(float64(interval) / navCurveFactor(pair.nav.Tilt, gp.config.Gamepad.NavCurve))
+		}
+		if pair.nav.Direction != 0 && now.Sub(pair.nav.LastMove) >= interval {
 			pair.nav.LastMove = now
 			if pair.isX {
 				actions = append(actions, Action{Type: ActionNavigate, DX: pair.nav.Direction, Dpad: pair.dpad})
@@ -647,8 +652,10 @@ func (gp *GamepadReader) handleAxis(code uint16, value int32) Action {
 
 	switch code {
 	case gp.navAxisX: // Nav stick X
+		gp.navX.Tilt = stickTilt(math.Abs(norm), dz)
 		return gp.updateNav(&gp.navX, applyDeadzone(norm, dz), true)
 	case gp.navAxisY: // Nav stick Y
+		gp.navY.Tilt = stickTilt(math.Abs(norm), dz)
 		return gp.updateNav(&gp.navY, applyDeadzone(norm, dz), false)
 	case ABS_HAT0X: // D-pad - separate axis to avoid stick jitter interference
 		return gp.updateNav(&gp.dpadX, int(value), true)
@@ -818,6 +825,10 @@ func (gp *GamepadReader) mouseStep(now time.Time) (Action, bool) {
 	}
 	gp.mouseLast = now
 	s := float64(gp.config.Mouse.Sensitivity) * scale
+	// Fine control: shape the radial deflection, keep the direction.
+	if m := math.Hypot(gp.mouseX, gp.mouseY); m > 0 {
+		s *= mouseCurve(m, gp.config.Gamepad.Deadzone, gp.config.Mouse.Curve) / m
+	}
 	gp.mouseAccX += gp.mouseX * s
 	gp.mouseAccY += gp.mouseY * s
 	dx, dy := int(gp.mouseAccX), int(gp.mouseAccY)
@@ -920,3 +931,30 @@ func applyDeadzone(norm, dz float64) int {
 	return 0
 }
 
+
+// stickTilt maps a stick deflection (0..1) to how far it is past the
+// deadzone: 0 right at the deadzone edge, 1 at full tilt.
+func stickTilt(m, dz float64) float64 {
+	if dz >= 1 {
+		return 0
+	}
+	return math.Min(1, math.Max(0, (m-dz)/(1-dz)))
+}
+
+// mouseCurve shapes the mouse stick deflection m for fine control.
+// curve 0 keeps the old linear response; higher values blend in a cubic
+// ramp that starts at zero at the deadzone edge. Full tilt stays the same,
+// so only small movements get slower.
+func mouseCurve(m, dz float64, curve int) float64 {
+	c := math.Min(1, math.Max(0, float64(curve)/100))
+	t := stickTilt(m, dz)
+	return (1-c)*m + c*t*t*t
+}
+
+// navCurveFactor is the speed factor (0.2..1) for nav stick repeat
+// (scrolling, key navigation): slight tilt repeats slower, full tilt
+// as before. curve 0 = always 1 (old behaviour).
+func navCurveFactor(tilt float64, curve int) float64 {
+	c := math.Min(1, math.Max(0, float64(curve)/100))
+	return math.Max(0.2, (1-c)+c*tilt*tilt)
+}
