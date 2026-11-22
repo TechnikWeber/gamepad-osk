@@ -113,7 +113,7 @@ func DefaultConfig() Config {
 				PositionToggle: "start",
 			},
 		},
-		Mouse: MouseConfig{Enabled: true, Sensitivity: 20, Curve: 30},
+		Mouse: MouseConfig{Enabled: true, Sensitivity: 16, Curve: 90},
 	}
 }
 
@@ -760,12 +760,12 @@ func ValidateConfig(cfg *Config) {
 		cfg.Gamepad.Deadzone = 0.25
 	}
 	if cfg.Mouse.Sensitivity < 1 || cfg.Mouse.Sensitivity > 50 {
-		log.Printf("Warning: sensitivity %d out of range [1,50], using 20", cfg.Mouse.Sensitivity)
-		cfg.Mouse.Sensitivity = 20
+		log.Printf("Warning: sensitivity %d out of range [1,50], using 16", cfg.Mouse.Sensitivity)
+		cfg.Mouse.Sensitivity = 16
 	}
 	if cfg.Mouse.Curve < 0 || cfg.Mouse.Curve > 100 {
-		log.Printf("Warning: curve %d out of range [0,100], using 30", cfg.Mouse.Curve)
-		cfg.Mouse.Curve = 30
+		log.Printf("Warning: curve %d out of range [0,100], using 90", cfg.Mouse.Curve)
+		cfg.Mouse.Curve = 90
 	}
 	if cfg.Gamepad.NavCurve < 0 || cfg.Gamepad.NavCurve > 100 {
 		log.Printf("Warning: nav_curve %d out of range [0,100], using 30", cfg.Gamepad.NavCurve)

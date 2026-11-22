@@ -52,5 +52,5 @@ position_toggle = start      # toggle keyboard top/bottom (empty = disabled)
 
 [mouse]
 enabled = true               # enable mouse cursor via right stick
-sensitivity = 20             # 1-50, higher = faster cursor (Shift+up/down to adjust live)
-curve = 30                   # 0-100, fine control: slight tilt moves the cursor slower, full tilt unchanged (0 = off)
+sensitivity = 16             # 1-50, higher = faster cursor (Shift+up/down to adjust live)
+curve = 90                   # 0-100, fine control: slight tilt moves the cursor slower, full tilt unchanged (0 = off)

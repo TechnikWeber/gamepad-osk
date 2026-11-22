@@ -133,8 +133,8 @@ func TestQWERTZUndoRedoUseSwappedCodes(t *testing.T) {
 
 func TestDefaultMouseSpeedAndCombo(t *testing.T) {
 	cfg := DefaultConfig()
-	if cfg.Mouse.Sensitivity != 20 {
-		t.Errorf("default sensitivity = %d, want 20", cfg.Mouse.Sensitivity)
+	if cfg.Mouse.Sensitivity != 16 {
+		t.Errorf("default sensitivity = %d, want 16", cfg.Mouse.Sensitivity)
 	}
 	if cfg.Gamepad.MouseCombo != "guide+start" {
 		t.Errorf("default mouse_combo = %q", cfg.Gamepad.MouseCombo)

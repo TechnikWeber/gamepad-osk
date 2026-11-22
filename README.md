@@ -196,8 +196,8 @@ nav_curve = 30        # 0-100, slight tilt of the other stick scrolls slower, 0 
 position_toggle = start     # any function can be empty = off
 
 [mouse]
-sensitivity = 20      # new default (was 10); same speed in mouse mode and with the keyboard
-curve = 30            # 0-100, fine control: slight tilt moves the cursor slower, full tilt unchanged, 0 = off
+sensitivity = 16      # new default (was 20); same speed in mouse mode and with the keyboard
+curve = 90            # 0-100, fine control: slight tilt moves the cursor slower, full tilt unchanged, 0 = off
 ```
 
 Everything else (button mapping, size, opacity, key repeat …) is described
